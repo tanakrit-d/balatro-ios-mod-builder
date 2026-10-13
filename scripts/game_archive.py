@@ -15,8 +15,10 @@ MAGIC = b"BALATRO-GAME\x01"
 def decode_key(value):
     try:
         key = base64.b64decode(value.strip(), altchars=b"-_", validate=True)
-    except (ValueError, binascii.Error):
-        raise ValueError("BALATRO_GAME_KEY must be a base64-encoded 32-byte key") from None
+    except ValueError, binascii.Error:
+        raise ValueError(
+            "BALATRO_GAME_KEY must be a base64-encoded 32-byte key"
+        ) from None
     if len(key) != 32:
         raise ValueError("BALATRO_GAME_KEY must be a base64-encoded 32-byte key")
     return key
@@ -34,7 +36,9 @@ def decrypt(data, key):
     try:
         return AESGCM(decode_key(key)).decrypt(nonce, data[len(MAGIC) + 12 :], MAGIC)
     except InvalidTag:
-        raise ValueError("Game archive authentication failed: wrong key or damaged archive") from None
+        raise ValueError(
+            "Game archive authentication failed: wrong key or damaged archive"
+        ) from None
 
 
 def main():
@@ -45,6 +49,7 @@ def main():
     args = parser.parse_args()
     # Check the game before generating a key or replacing the encrypted file.
     from builder import game_files
+
     data = args.input.read_bytes()
     game_files(data)
     if args.key_file.exists():

@@ -1,12 +1,12 @@
 import io
 import json
-from pathlib import Path
 import plistlib
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 import zipfile
+from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import builder
@@ -26,16 +26,22 @@ class BuilderTests(unittest.TestCase):
                 self.assertNotIn("secret sharing URL", str(error.exception))
 
     def test_game_extraction_from_macos_folder_zip(self):
-        archive = builder.zip_bytes({
-            "Balatro.love/main.lua": b"game",
-            "Balatro.love/resources/card.png": b"image",
-            "__MACOSX/._Balatro.love": b"metadata",
-            "Balatro.love/._main.lua": b"metadata",
-            "Balatro.love/.DS_Store": b"metadata",
-        })
-        self.assertEqual(builder.game_files(archive), {
-            "main.lua": b"game", "resources/card.png": b"image",
-        })
+        archive = builder.zip_bytes(
+            {
+                "Balatro.love/main.lua": b"game",
+                "Balatro.love/resources/card.png": b"image",
+                "__MACOSX/._Balatro.love": b"metadata",
+                "Balatro.love/._main.lua": b"metadata",
+                "Balatro.love/.DS_Store": b"metadata",
+            }
+        )
+        self.assertEqual(
+            builder.game_files(archive),
+            {
+                "main.lua": b"game",
+                "resources/card.png": b"image",
+            },
+        )
 
     def test_game_extraction_from_zip(self):
         files = {"main.lua": b"game", "conf.lua": b"identity"}
@@ -65,9 +71,11 @@ class BuilderTests(unittest.TestCase):
         records = [
             {"branchName": "main", "version": "0.5.0", "smods_version": "latest"}
         ]
-        with patch.object(builder, "get", return_value=records):
-            with self.assertRaisesRegex(ValueError, "exact"):
-                builder.resolve()
+        with (
+            patch.object(builder, "get", return_value=records),
+            self.assertRaisesRegex(ValueError, "exact"),
+        ):
+            builder.resolve()
 
     def test_resolution_uses_version_and_exact_tag(self):
         records = [
@@ -117,11 +125,16 @@ class BuilderTests(unittest.TestCase):
                         for stream in ("multiplayer", "pokermon")
                         for name, data in {
                             "Assets.car": stream.encode(),
-                            "icon-info.plist": plistlib.dumps({
-                                "CFBundleIcons": {"CFBundlePrimaryIcon": {
-                                    "CFBundleIconName": "iOS AppIcon",
-                                }},
-                            }),
+                            "NewIcon.png": stream.encode() + b" icon",
+                            "icon-info.plist": plistlib.dumps(
+                                {
+                                    "CFBundleIcons": {
+                                        "CFBundlePrimaryIcon": {
+                                            "CFBundleIconName": "iOS AppIcon",
+                                        }
+                                    },
+                                }
+                            ),
                         }.items()
                     },
                 }
@@ -168,6 +181,9 @@ class BuilderTests(unittest.TestCase):
                     self.assertEqual(info["CFBundleShortVersionString"], version)
                     self.assertEqual(info["CFBundleVersion"], version)
                     self.assertEqual(files[app + "Assets.car"], stream.encode())
+                    self.assertEqual(
+                        files[app + "NewIcon.png"], stream.encode() + b" icon"
+                    )
                     self.assertFalse(any(p.startswith("builder-icons/") for p in files))
                     self.assertIn(app + "bundled-mods/" + folder + "/mod.lua", files)
                     self.assertIn(app + "bundled-mods/smods/mod.lua", files)
@@ -189,10 +205,13 @@ class BuilderTests(unittest.TestCase):
                         "UISupportedInterfaceOrientations",
                         "UISupportedInterfaceOrientations~ipad",
                     ):
-                        self.assertEqual(info[key], [
-                            "UIInterfaceOrientationLandscapeLeft",
-                            "UIInterfaceOrientationLandscapeRight",
-                        ])
+                        self.assertEqual(
+                            info[key],
+                            [
+                                "UIInterfaceOrientationLandscapeLeft",
+                                "UIInterfaceOrientationLandscapeRight",
+                            ],
+                        )
                     self.assertEqual(
                         scenes["UISceneConfigurations"][
                             "UIWindowSceneSessionRoleApplication"

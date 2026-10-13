@@ -5,7 +5,7 @@ requires-python = ">=3.15"
 [[package]]
 name = "balatro-ios-mod-builder"
 version = "0.1.0"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "cryptography" },
 ]

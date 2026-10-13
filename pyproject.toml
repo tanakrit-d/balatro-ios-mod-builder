@@ -9,12 +9,11 @@ authors = [
 requires-python = ">=3.15"
 dependencies = ["cryptography==50.0.2"]
 
-[project.scripts]
-balatro-ios-mod-builder = "balatro_ios_mod_builder:main"
+[tool.uv]
+package = false
 
-[build-system]
-requires = ["uv_build>=0.13.0,<0.15.0"]
-build-backend = "uv_build"
+[tool.ty.environment]
+extra-paths = ["scripts"]
 
 [dependency-groups]
 dev = [

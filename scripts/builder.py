@@ -130,7 +130,8 @@ def game_files(data):
         else:
             reason = "The game input is not a valid ZIP-compatible archive."
         raise ValueError(
-            reason + " Provide a complete .love, Balatro.exe, ZIP, or IPA containing the game."
+            reason
+            + " Provide a complete .love, Balatro.exe, ZIP, or IPA containing the game."
         ) from None
     files = {
         p: d
@@ -235,9 +236,13 @@ def package(stream, lock, base, game, output):
     if icon_info is None:
         raise ValueError("Base IPA is missing compiled app icons; rebuild the runtime")
     info.update(plistlib.loads(icon_info))
-    for path, data in (files.items()):
-        if path.startswith(icon_root) and path != icon_root + "icon-info.plist":
-            files[app + path.removeprefix(icon_root)] = data
+    files.update(
+        {
+            app + path.removeprefix(icon_root): data
+            for path, data in files.items()
+            if path.startswith(icon_root) and path != icon_root + "icon-info.plist"
+        }
+    )
     files = {p: d for p, d in files.items() if not p.startswith("builder-icons/")}
     info["UIApplicationSceneManifest"] = {
         "UIApplicationSupportsMultipleScenes": False,
@@ -277,9 +282,13 @@ def main():
     build.add_argument("--stream", choices=["multiplayer", "pokermon"], required=True)
     build.add_argument("--base", type=Path, required=True)
     build.add_argument(
-        "--game", type=Path, help="Local plaintext game archive instead of the encrypted archive"
+        "--game",
+        type=Path,
+        help="Local plaintext game archive instead of the encrypted archive",
     )
-    build.add_argument("--encrypted-game", type=Path, default=ROOT / "assets/game/Balatro.love.zip.enc")
+    build.add_argument(
+        "--encrypted-game", type=Path, default=ROOT / "assets/game/B.love.zip.enc"
+    )
     build.add_argument("--lock", type=Path, default=ROOT / "versions.lock.json")
     build.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -291,7 +300,9 @@ def main():
         else:
             key = os.environ.get("BALATRO_GAME_KEY")
             if not key:
-                parser.error("Set BALATRO_GAME_KEY to decrypt the committed game archive")
+                parser.error(
+                    "Set BALATRO_GAME_KEY to decrypt the committed game archive"
+                )
             try:
                 game = decrypt(args.encrypted_game.read_bytes(), key)
             except ValueError as error:

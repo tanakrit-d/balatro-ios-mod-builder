@@ -1,10 +1,10 @@
 import base64
 import sys
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from game_archive import encrypt, decrypt
+from game_archive import decrypt, encrypt
 
 
 class GameArchiveTests(unittest.TestCase):
@@ -28,8 +28,10 @@ class GameArchiveTests(unittest.TestCase):
 
     def test_invalid_key_and_archive_fail(self):
         for key in ("invalid", "", base64.urlsafe_b64encode(b"short").decode()):
-            with self.subTest(key=key):
-                with self.assertRaisesRegex(ValueError, "32-byte key"):
-                    encrypt(b"game", key)
+            with (
+                self.subTest(key=key),
+                self.assertRaisesRegex(ValueError, "32-byte key"),
+            ):
+                encrypt(b"game", key)
         with self.assertRaisesRegex(ValueError, "Invalid encrypted"):
             decrypt(b"not encrypted", self.key)

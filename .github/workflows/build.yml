@@ -14,12 +14,14 @@ concurrency:
 jobs:
   build:
     runs-on: macos-latest
+    outputs:
+      build: ${{ steps.resolve.outputs.build }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: '3.15'
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
       - run: uv sync --frozen --no-install-project --no-dev
       - run: uv run --no-sync python -m unittest discover -s tests -v
       - uses: actions/cache/restore@v6
@@ -58,10 +60,27 @@ jobs:
             dist/*.ipa
             versions.lock.json
           retention-days: 7
-      - if: steps.resolve.outputs.build == 'true'
-        run: cp versions.lock.json .build/last-success.json
+  publish:
+    needs: build
+    if: needs.build.outputs.build == 'true'
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: balatro-ios
+          path: .
+      - name: Publish stream releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/releases.py
+      - name: Record successful publication
+        run: |
+          mkdir -p .build
+          cp versions.lock.json .build/last-success.json
       - uses: actions/cache/save@v6
-        if: steps.resolve.outputs.build == 'true'
         with:
           path: .build/last-success.json
           key: stream-state-${{ github.run_id }}
