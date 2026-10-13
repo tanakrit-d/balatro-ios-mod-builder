@@ -19,7 +19,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.15'
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10
       - run: uv sync --frozen --no-install-project --no-dev
       - run: uv run --no-sync python -m unittest discover -s tests -v
       - uses: actions/cache/restore@v6
@@ -60,7 +60,7 @@ jobs:
           retention-days: 7
       - if: steps.resolve.outputs.build == 'true'
         run: cp versions.lock.json .build/last-success.json
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v6
         if: steps.resolve.outputs.build == 'true'
         with:
           path: .build/last-success.json
