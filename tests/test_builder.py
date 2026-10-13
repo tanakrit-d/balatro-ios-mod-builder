@@ -13,6 +13,18 @@ import builder
 
 
 class BuilderTests(unittest.TestCase):
+    def test_game_extraction_from_zip(self):
+        files = {"main.lua": b"game", "conf.lua": b"identity"}
+        game = builder.zip_bytes(files)
+        for name, data in [
+            ("Balatro.love", game),
+            ("Balatro/Balatro.exe", b"MZ executable stub" + game),
+            ("Balatro.app/Contents/Resources/game.love", game),
+        ]:
+            with self.subTest(name=name):
+                archive = builder.zip_bytes({name: data, "README.txt": b"readme"})
+                self.assertEqual(builder.game_files(archive), files)
+
     def test_reject_traversal_and_symlinks(self):
         for name in ["../escape", "/absolute", "foo\\bar"]:
             with self.assertRaises(ValueError):
@@ -88,7 +100,13 @@ class BuilderTests(unittest.TestCase):
                 },
             }
             mod = builder.zip_bytes({"repo/mod.lua": b"mod"})
-            game = builder.zip_bytes({"main.lua": b"game", "conf.lua": b"identity"})
+            game = builder.zip_bytes(
+                {
+                    "Balatro/game.love": builder.zip_bytes(
+                        {"main.lua": b"game", "conf.lua": b"identity"}
+                    )
+                }
+            )
             with (
                 patch.object(builder, "ROOT", root),
                 patch.object(builder, "download", return_value=mod),

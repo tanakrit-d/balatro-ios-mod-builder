@@ -1,0 +1,34 @@
+# This patch toggles some internal config options to work better for mobile
+[manifest]
+version = "1.0.0"
+priority = 0
+
+[[patches]]
+[patches.pattern]
+target = "globals.lua"
+pattern = "if love.system.getOS() == 'OS X' then"
+position = "before"
+payload = '''
+if love.system.getOS() == 'Android' or love.system.getOS() == 'iOS' then
+	self.F_SAVE_TIMER = 5
+	self.F_DISCORD = true
+	self.F_NO_ACHIEVEMENTS = true
+	self.F_CRASH_REPORTS = false
+	self.F_SOUND_THREAD = true
+	self.F_VIDEO_SETTINGS = false
+	self.F_ENGLISH_ONLY = false
+	self.F_QUIT_BUTTON = false
+end
+'''
+match_indent = true
+times = 1
+
+[[patches]]
+[patches.pattern]
+target = "globals.lua"
+pattern = "self.F_MOBILE_UI = false"
+position = "at"
+payload = "self.F_MOBILE_UI = true"
+match_indent = true
+times = 1
+

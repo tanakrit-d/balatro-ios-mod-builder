@@ -5,3 +5,4 @@ __pycache__/
 *.ipa
 .venv/
 .ruff_cache/
+*.DS_Store

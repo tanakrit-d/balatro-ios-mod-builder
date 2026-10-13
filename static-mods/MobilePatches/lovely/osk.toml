@@ -1,0 +1,15 @@
+# This patch makes the on screen keyboard work on mobile
+[manifest]
+version = "1.0.0"
+priority = 0
+
+[[patches]]
+[patches.pattern]
+target = "functions/button_callbacks.lua"
+pattern = "if G.CONTROLLER.text_input_hook == e and G.CONTROLLER.HID.controller then"
+position = "at"
+payload = 'if G.CONTROLLER.text_input_hook == e and (G.CONTROLLER.HID.controller or G.CONTROLLER.HID.touch) then'
+match_indent = true
+times = 1
+
+
