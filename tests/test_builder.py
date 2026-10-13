@@ -13,6 +13,18 @@ import builder
 
 
 class BuilderTests(unittest.TestCase):
+    def test_invalid_game_input_has_safe_diagnostics(self):
+        for data, message in [
+            (b"", "empty"),
+            (b" <!DOCTYPE html><html>secret sharing URL</html>", "HTML"),
+            (b"PK\x03\x04truncated", "truncated or corrupt"),
+            (b"not an archive", "not a valid ZIP"),
+        ]:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message) as error:
+                    builder.game_files(data)
+                self.assertNotIn("secret sharing URL", str(error.exception))
+
     def test_game_extraction_from_macos_folder_zip(self):
         archive = builder.zip_bytes({
             "Balatro.love/main.lua": b"game",

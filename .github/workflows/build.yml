@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['scripts/**', 'native/**', 'static-mods/**', 'assets/icons/**', 'versions.lock.json', '.github/workflows/**']
+    paths: ['scripts/**', 'native/**', 'static-mods/**', 'assets/**', 'pyproject.toml', 'uv.lock', 'versions.lock.json', '.github/workflows/**']
 permissions:
   contents: read
 concurrency:
@@ -19,7 +19,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.15'
-      - run: python -m unittest discover -s tests -v
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --no-install-project --no-dev
+      - run: uv run --no-sync python -m unittest discover -s tests -v
       - uses: actions/cache/restore@v6
         with:
           path: .build/last-success.json
@@ -29,7 +31,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python scripts/builder.py resolve
+          uv run --no-sync python scripts/builder.py resolve
           if [ '${{ github.event_name }}' = schedule ] && cmp -s versions.lock.json .build/last-success.json; then
             echo 'build=false' >> "$GITHUB_OUTPUT"
           else
@@ -39,15 +41,15 @@ jobs:
         if: steps.resolve.outputs.build == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/runtime.py
+        run: uv run --no-sync python scripts/runtime.py
       - name: Build both streams
         if: steps.resolve.outputs.build == 'true'
         env:
-          BALATRO_GAME_URL: ${{ secrets.BALATRO_GAME_URL }}
+          BALATRO_GAME_KEY: ${{ secrets.BALATRO_GAME_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python scripts/builder.py build --stream multiplayer --base .build/base.ipa
-          python scripts/builder.py build --stream pokermon --base .build/base.ipa
+          uv run --no-sync python scripts/builder.py build --stream multiplayer --base .build/base.ipa
+          uv run --no-sync python scripts/builder.py build --stream pokermon --base .build/base.ipa
       - uses: actions/upload-artifact@v7
         if: steps.resolve.outputs.build == 'true'
         with:

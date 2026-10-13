@@ -12,6 +12,8 @@ import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
 
+from game_archive import decrypt
+
 ROOT = Path(__file__).resolve().parents[1]
 API = "https://api.github.com/repos/"
 
@@ -115,9 +117,24 @@ def archive_files(data, strip_root=False):
 
 
 def game_files(data):
+    try:
+        extracted = archive_files(data)
+    except zipfile.BadZipFile:
+        prefix = data[:512].lstrip(b"\xef\xbb\xbf \t\r\n").lower()
+        if not data:
+            reason = "The game input is empty."
+        elif prefix.startswith((b"<!doctype html", b"<html")):
+            reason = "The game input is HTML, likely a sharing, login, or error page."
+        elif data.startswith(b"PK"):
+            reason = "The game ZIP appears truncated or corrupt."
+        else:
+            reason = "The game input is not a valid ZIP-compatible archive."
+        raise ValueError(
+            reason + " Provide a complete .love, Balatro.exe, ZIP, or IPA containing the game."
+        ) from None
     files = {
         p: d
-        for p, d in archive_files(data).items()
+        for p, d in extracted.items()
         if not p.startswith("__MACOSX/")
         and not any(
             part.startswith("._") or part == ".DS_Store"
@@ -169,6 +186,7 @@ def package(stream, lock, base, game, output):
     # Base must come from our rebuilt runtime, not an arbitrary old IPA.
     if json.loads(files[app + "builder-runtime.json"]) != lock["common"]:
         raise ValueError("Base runtime does not match dependency lock")
+    game_archive = zip_bytes(game_files(game))
     mods = {}
     for folder, dependency in [
         ("smods", "smods"),
@@ -203,7 +221,7 @@ def package(stream, lock, base, game, output):
         files[app + "bundled-mods/" + name] = data
     files[app + "bundled-mods.json"] = json.dumps(manifest, sort_keys=True).encode()
     files[app + "build-manifest.json"] = json.dumps(lock, indent=2).encode()
-    files[app + "game.love"] = zip_bytes(game_files(game))
+    files[app + "game.love"] = game_archive
     info = plistlib.loads(files[plists[0]])
     info["CFBundleIdentifier"] = "mod.balatro." + stream
     name = "Balatro (MP)" if stream == "multiplayer" else "Balatro (PK)"
@@ -217,7 +235,7 @@ def package(stream, lock, base, game, output):
     if icon_info is None:
         raise ValueError("Base IPA is missing compiled app icons; rebuild the runtime")
     info.update(plistlib.loads(icon_info))
-    for path, data in list(files.items()):
+    for path, data in (files.items()):
         if path.startswith(icon_root) and path != icon_root + "icon-info.plist":
             files[app + path.removeprefix(icon_root)] = data
     files = {p: d for p, d in files.items() if not p.startswith("builder-icons/")}
@@ -259,22 +277,30 @@ def main():
     build.add_argument("--stream", choices=["multiplayer", "pokermon"], required=True)
     build.add_argument("--base", type=Path, required=True)
     build.add_argument(
-        "--game", type=Path, help="Local game archive instead of BALATRO_GAME_URL"
+        "--game", type=Path, help="Local plaintext game archive instead of the encrypted archive"
     )
+    build.add_argument("--encrypted-game", type=Path, default=ROOT / "assets/game/Balatro.love.zip.enc")
     build.add_argument("--lock", type=Path, default=ROOT / "versions.lock.json")
     build.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.command == "resolve":
         args.output.write_text(json.dumps(resolve(), indent=2, sort_keys=True) + "\n")
     else:
-        url = os.environ.get("BALATRO_GAME_URL")
-        if not args.game and not url:
-            parser.error("BALATRO_GAME_URL must point to your game archive")
+        if args.game:
+            game = args.game.read_bytes()
+        else:
+            key = os.environ.get("BALATRO_GAME_KEY")
+            if not key:
+                parser.error("Set BALATRO_GAME_KEY to decrypt the committed game archive")
+            try:
+                game = decrypt(args.encrypted_game.read_bytes(), key)
+            except ValueError as error:
+                parser.error(str(error))
         package(
             args.stream,
             json.loads(args.lock.read_text()),
             args.base.read_bytes(),
-            args.game.read_bytes() if args.game else download(url),
+            game,
             args.output or ROOT / "dist" / ("balatro-" + args.stream + ".ipa"),
         )
 

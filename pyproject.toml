@@ -7,7 +7,7 @@ authors = [
     { name = "Dominic", email = "127579510+tanakrit-d@users.noreply.github.com" }
 ]
 requires-python = ">=3.15"
-dependencies = []
+dependencies = ["cryptography==50.0.2"]
 
 [project.scripts]
 balatro-ios-mod-builder = "balatro_ios_mod_builder:main"
