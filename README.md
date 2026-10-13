@@ -8,11 +8,15 @@ Set the repository Actions secret `BALATRO_GAME_URL` to an HTTPS URL for your ow
 
 The workflow checks every six hours. It rebuilds both streams when any upstream dependency changes; manual runs and relevant pushes always build. Successful locks are retained in the Actions cache, so failed builds retry on the next check. Cache eviction can trigger a harmless rebuild. Download `balatro-ios` from the successful run to obtain both IPAs and their exact dependency lock. Artifacts expire after seven days. The workflow has read-only repository permissions and does not publish releases or push commits. IPAs contain game assets: keep the repository and artifacts appropriately private.
 
-The resulting IPAs are unsigned and must be signed with your usual iOS sideloading tool. The streams have distinct bundle identifiers, allowing both to be installed together.
+The resulting IPAs require iOS 15 or later, are unsigned, and must be signed with your usual iOS sideloading tool. The streams have distinct bundle identifiers, allowing both to be installed together.
 
 ## Versions
 
 `versions.lock.json` records exact dependencies. Multiplayer uses the same [release API](https://balatromp.com/api/releases) as its [launcher](https://github.com/Balatro-Multiplayer/Balatro-Multiplayer-Launcher), selects the highest standard main-stream version (including letter suffixes, excluding named variants), and requires its exact `smods_version`. An unavailable SMODS tag fails the build; there is no fallback. Pokermon and its SMODS use their latest non-prerelease GitHub releases. Lovely uses its latest non-prerelease release. Runtime, Apple dependencies, and LuaJIT commits are also locked.
+
+## App icons
+
+Custom app icons live in `assets/icons/multiplayer-1024.png` and `assets/icons/pokermon-1024.png`. Use opaque 1024 × 1024 PNGs. The runtime build compiles both icon catalogs with Xcode; packaging selects the matching catalog for each stream. Icon changes trigger the GitHub workflow.
 
 ## Static mods
 
@@ -32,7 +36,7 @@ The app enables Files sharing, exposing `game/Mods` under its Documents folder. 
 
 ## Local build
 
-Requires macOS, Xcode with the iOS SDK, Rust/rustup, Python 3.12+, Git, and make. The runtime script follows upstream's Apple dependency setup and uses Lovely's provided LuaJIT patch. Upstream patch/build incompatibilities intentionally stop the build for review.
+Requires macOS, Xcode with the iOS SDK, Rust/rustup, Python 3.12+, Git, CMake, and make. The runtime script follows upstream's Apple dependency setup and uses Lovely's provided LuaJIT patch. It rebuilds SDL 2.28.5 with the scene lifecycle backport in `native/sdl2-scenes.patch`, required for launching apps built with the iOS 27 SDK. The app uses a single window scene and forwards scene lifecycle events to SDL. Upstream patch/build incompatibilities intentionally stop the build for review.
 
 ```sh
 python scripts/builder.py resolve
@@ -43,6 +47,8 @@ python scripts/builder.py build --stream pokermon --base .build/base.ipa
 ```
 
 Outputs are in `dist/`. Optional `GITHUB_TOKEN` is used only for GitHub API requests. Game URLs and downloads are not printed by the builder. Runtime compilation requires macOS; packaging and resolution also run on Linux.
+
+To test with a local ZIP instead of a URL, pass `--game local_ipa/Balatro.love.zip` to each `build` command. ZIPs containing an extracted game folder are also supported; macOS archive metadata is discarded.
 
 ```sh
 python -m unittest discover -s tests -v

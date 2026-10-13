@@ -1,11 +1,13 @@
 """Rebuild Mobile Maker's iOS runtime with locked Lovely and startup installer (macOS)."""
 
 import json
+import os
 import shutil
 import subprocess
 import sys
 
 from builder import ROOT, zip_bytes
+from icons import compile_icons
 
 
 def run(*args, cwd=None, env=None):
@@ -41,7 +43,38 @@ def main():
         str(deps),
     )
     run("git", "checkout", lock["dependencies"]["commit"], cwd=deps)
+    sdl = work / "sdl"
+    sources(lock["sdl"]["repo"], lock["sdl"]["commit"], sdl)
+    run("git", "apply", str(ROOT / "native/sdl2-scenes.patch"), cwd=sdl)
+    run(
+        "cmake",
+        "-S",
+        str(sdl),
+        "-B",
+        str(work / "sdl-build"),
+        "-DCMAKE_SYSTEM_NAME=iOS",
+        "-DCMAKE_OSX_SYSROOT=iphoneos",
+        "-DCMAKE_OSX_ARCHITECTURES=arm64",
+        "-DCMAKE_OSX_DEPLOYMENT_TARGET=15.0",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DSDL_SHARED=OFF",
+        "-DSDL_STATIC=ON",
+        "-DSDL_TEST=OFF",
+        "-DSDL_HIDAPI=OFF",
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+    )
+    run("cmake", "--build", str(work / "sdl-build"), "--parallel", "4")
+    run(
+        "libtool",
+        "-static",
+        "-o",
+        str(deps / "iOS/libraries/SDL2.xcframework/ios-arm64/libSDL2.a"),
+        str(work / "sdl-build/libSDL2.a"),
+        str(work / "sdl-build/libSDL2main.a"),
+    )
     run("rustup", "target", "add", "aarch64-apple-ios", cwd=lovely)
+    ios_env = os.environ.copy()
+    ios_env["IPHONEOS_DEPLOYMENT_TARGET"] = "15.0"
     run(
         "cargo",
         "build",
@@ -52,6 +85,7 @@ def main():
         "--target",
         "aarch64-apple-ios",
         cwd=lovely,
+        env=ios_env,
     )
     run("git", "apply", str(lovely / "crates/liblovely/luajit.patch"), cwd=jit)
     sdk = subprocess.check_output(
@@ -64,9 +98,10 @@ def main():
         "make",
         "-j4",
         "HOST_CC=cc",
-        f"CROSS={compiler.removesuffix('clang')}",
+        "TARGET_CC=" + compiler,
+        "TARGET_LD=" + compiler,
         "TARGET_SYS=iOS",
-        "TARGET_FLAGS=-arch arm64 -isysroot " + sdk + " -miphoneos-version-min=13.0",
+        "TARGET_FLAGS=-arch arm64 -isysroot " + sdk + " -miphoneos-version-min=15.0",
         "BUILDMODE=static",
         "XCFLAGS=-DLUAJIT_DISABLE_JIT",
         "-C",
@@ -118,7 +153,7 @@ def main():
         "generic/platform=iOS",
         "ARCHS=arm64",
         "ONLY_ACTIVE_ARCH=YES",
-        "IPHONEOS_DEPLOYMENT_TARGET=13.0",
+        "IPHONEOS_DEPLOYMENT_TARGET=15.0",
         "CODE_SIGNING_ALLOWED=NO",
         "OTHER_LDFLAGS=$(inherited) -framework Security -framework SystemConfiguration -liconv -lresolv",
         cwd=love,
@@ -133,6 +168,7 @@ def main():
         for p in app.rglob("*")
         if p.is_file()
     }
+    files.update(compile_icons(love / "platform/xcode/Images.xcassets"))
     (ROOT / ".build/base.ipa").write_bytes(zip_bytes(files))
 
 

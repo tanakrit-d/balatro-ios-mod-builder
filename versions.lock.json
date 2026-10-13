@@ -19,6 +19,10 @@
     "runtime": {
       "commit": "01af71f2f4c33dd08533296d7a66dce0ab520b52",
       "repo": "WilsontheWolf/lmm-love"
+    },
+    "sdl": {
+      "commit": "15ead9a40d09a1eb9972215cceac2bf29c9b77f6",
+      "repo": "libsdl-org/SDL"
     }
   },
   "schema": 1,

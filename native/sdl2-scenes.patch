@@ -1,0 +1,146 @@
+diff --git a/src/video/uikit/SDL_uikitappdelegate.h b/src/video/uikit/SDL_uikitappdelegate.h
+index ac0a88a..69447ad 100644
+--- a/src/video/uikit/SDL_uikitappdelegate.h
++++ b/src/video/uikit/SDL_uikitappdelegate.h
+@@ -41,6 +41,8 @@
+  * several major third-party ad APIs (e.g. Google admob) incorrectly assume this
+  * property always exists, and will crash if it doesn't. */
+ @property (nonatomic) UIWindow *window;
++@property (nonatomic, strong) UIWindowScene *windowScene;
++- (void)connectWindowScene:(UIWindowScene *)scene;
+ 
+ @end
+ 
+diff --git a/src/video/uikit/SDL_uikitappdelegate.m b/src/video/uikit/SDL_uikitappdelegate.m
+index 1e27200..d68e36a 100644
+--- a/src/video/uikit/SDL_uikitappdelegate.m
++++ b/src/video/uikit/SDL_uikitappdelegate.m
+@@ -343,8 +343,36 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
+ 
+ @end
+ 
++/* Scene lifecycle backport added by balatro-ios-mod-builder. */
++@interface SDLUIKitSceneDelegate : NSObject <UIWindowSceneDelegate>
++@end
++
++@implementation SDLUIKitSceneDelegate
++- (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options
++{
++    if (![scene isKindOfClass:[UIWindowScene class]]) return;
++    SDLUIKitDelegate *delegate = [SDLUIKitDelegate sharedAppDelegate];
++    [delegate connectWindowScene:(UIWindowScene *)scene];
++    for (UIOpenURLContext *context in options.URLContexts) {
++        [delegate application:UIApplication.sharedApplication openURL:context.URL options:@{}];
++    }
++}
++- (void)scene:(UIScene *)scene openURLContexts:(NSSet<UIOpenURLContext *> *)contexts
++{
++    for (UIOpenURLContext *context in contexts) {
++        [[SDLUIKitDelegate sharedAppDelegate] application:UIApplication.sharedApplication openURL:context.URL options:@{}];
++    }
++}
++- (void)sceneDidDisconnect:(UIScene *)scene
++{
++    SDLUIKitDelegate *delegate = [SDLUIKitDelegate sharedAppDelegate];
++    if (delegate.windowScene == scene) delegate.windowScene = nil;
++}
++@end
++
+ @implementation SDLUIKitDelegate {
+     UIWindow *launchWindow;
++    BOOL startedMain;
+ }
+ 
+ /* convenience method */
+@@ -404,10 +432,18 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
+     /* exit(exit_status); */
+ }
+ 
+-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
++- (void)connectWindowScene:(UIWindowScene *)scene
+ {
++    self.windowScene = scene;
++    UIWindow *window = self.window;
++    if (window) {
++        window.windowScene = scene;
++        [window makeKeyAndVisible];
++    }
++    /* Reconnecting a scene must not create another Lua VM or game loop. */
++    if (startedMain) return;
++    startedMain = YES;
+     NSBundle *bundle = [NSBundle mainBundle];
+-
+ #if SDL_IPHONE_LAUNCHSCREEN
+     /* The normal launch screen is displayed until didFinishLaunching returns,
+      * but SDL_main is called after that happens and there may be a noticeable
+@@ -442,7 +478,7 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
+     }
+ 
+     if (vc.view) {
+-        launchWindow = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
++        launchWindow = [[UIWindow alloc] initWithWindowScene:scene];
+ 
+         /* We don't want the launch window immediately hidden when a real SDL
+          * window is shown - we fade it out ourselves when we're ready. */
+@@ -456,6 +492,13 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
+     }
+ #endif
+ 
++    [self performSelector:@selector(postFinishLaunch) withObject:nil afterDelay:0.0];
++}
++
++- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
++{
++    NSBundle *bundle = [NSBundle mainBundle];
++
+     /* Set working directory to resource path */
+     [[NSFileManager defaultManager] changeCurrentDirectoryPath:[bundle resourcePath]];
+ 
+@@ -464,8 +507,6 @@ static UIImage *SDL_LoadLaunchImageNamed(NSString *name, int screenh)
+                         SDL_IdleTimerDisabledChanged, NULL);
+ 
+     SDL_SetMainReady();
+-    [self performSelector:@selector(postFinishLaunch) withObject:nil afterDelay:0.0];
+-
+     return YES;
+ }
+ 
+diff --git a/src/video/uikit/SDL_uikitevents.m b/src/video/uikit/SDL_uikitevents.m
+index 68d38bc..ff7e41f 100644
+--- a/src/video/uikit/SDL_uikitevents.m
++++ b/src/video/uikit/SDL_uikitevents.m
+@@ -53,10 +53,10 @@ static BOOL UIKit_EventPumpEnabled = YES;
+     NSNotificationCenter *notificationCenter = NSNotificationCenter.defaultCenter;
+     if (UIKit_EventPumpEnabled && !self.isObservingNotifications) {
+         self.isObservingNotifications = YES;
+-        [notificationCenter addObserver:self selector:@selector(applicationDidBecomeActive) name:UIApplicationDidBecomeActiveNotification object:nil];
+-        [notificationCenter addObserver:self selector:@selector(applicationWillResignActive) name:UIApplicationWillResignActiveNotification object:nil];
+-        [notificationCenter addObserver:self selector:@selector(applicationDidEnterBackground) name:UIApplicationDidEnterBackgroundNotification object:nil];
+-        [notificationCenter addObserver:self selector:@selector(applicationWillEnterForeground) name:UIApplicationWillEnterForegroundNotification object:nil];
++        [notificationCenter addObserver:self selector:@selector(applicationDidBecomeActive) name:UISceneDidActivateNotification object:nil];
++        [notificationCenter addObserver:self selector:@selector(applicationWillResignActive) name:UISceneWillDeactivateNotification object:nil];
++        [notificationCenter addObserver:self selector:@selector(applicationDidEnterBackground) name:UISceneDidEnterBackgroundNotification object:nil];
++        [notificationCenter addObserver:self selector:@selector(applicationWillEnterForeground) name:UISceneWillEnterForegroundNotification object:nil];
+         [notificationCenter addObserver:self selector:@selector(applicationWillTerminate) name:UIApplicationWillTerminateNotification object:nil];
+         [notificationCenter addObserver:self selector:@selector(applicationDidReceiveMemoryWarning) name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
+ #if !TARGET_OS_TV
+diff --git a/src/video/uikit/SDL_uikitwindow.m b/src/video/uikit/SDL_uikitwindow.m
+index d696179..0b59584 100644
+--- a/src/video/uikit/SDL_uikitwindow.m
++++ b/src/video/uikit/SDL_uikitwindow.m
+@@ -212,7 +212,14 @@ int UIKit_CreateWindow(_THIS, SDL_Window *window)
+ 
+         /* ignore the size user requested, and make a fullscreen window */
+         /* !!! FIXME: can we have a smaller view? */
+-        UIWindow *uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
++        UIWindow *uiwindow;
++        /* Attach SDL's actual rendering window to the connected scene. */
++        UIWindowScene *scene = ((SDLUIKitDelegate *)[SDLUIKitDelegate sharedAppDelegate]).windowScene;
++        if (data.uiscreen == [UIScreen mainScreen] && scene) {
++            uiwindow = [[SDL_uikitwindow alloc] initWithWindowScene:scene];
++        } else {
++            uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
++        }
+ 
+         /* put the window on an external display if appropriate. */
+         if (data.uiscreen != [UIScreen mainScreen]) {

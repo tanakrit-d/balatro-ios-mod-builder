@@ -13,6 +13,18 @@ import builder
 
 
 class BuilderTests(unittest.TestCase):
+    def test_game_extraction_from_macos_folder_zip(self):
+        archive = builder.zip_bytes({
+            "Balatro.love/main.lua": b"game",
+            "Balatro.love/resources/card.png": b"image",
+            "__MACOSX/._Balatro.love": b"metadata",
+            "Balatro.love/._main.lua": b"metadata",
+            "Balatro.love/.DS_Store": b"metadata",
+        })
+        self.assertEqual(builder.game_files(archive), {
+            "main.lua": b"game", "resources/card.png": b"image",
+        })
+
     def test_game_extraction_from_zip(self):
         files = {"main.lua": b"game", "conf.lua": b"identity"}
         game = builder.zip_bytes(files)
@@ -86,14 +98,30 @@ class BuilderTests(unittest.TestCase):
                     app + "Info.plist": plistlib.dumps({"CFBundleExecutable": "Base"}),
                     app + "builder-runtime.json": json.dumps(common).encode(),
                     app + "Base": b"executable",
+                    app + "Assets.car": b"old icons",
                     app + "_CodeSignature/CodeResources": b"old",
+                    **{
+                        "builder-icons/" + stream + "/" + name: data
+                        for stream in ("multiplayer", "pokermon")
+                        for name, data in {
+                            "Assets.car": stream.encode(),
+                            "icon-info.plist": plistlib.dumps({
+                                "CFBundleIcons": {"CFBundlePrimaryIcon": {
+                                    "CFBundleIconName": "iOS AppIcon",
+                                }},
+                            }),
+                        }.items()
+                    },
                 }
             )
             lock = {
                 "common": common,
                 "streams": {
                     s: {
-                        "mod": {"url": "https://example.com/mod"},
+                        "mod": {
+                            "url": "https://example.com/mod",
+                            "version": "0.5.5" if s == "multiplayer" else "v3.9.1",
+                        },
                         "smods": {"url": "https://example.com/smods"},
                     }
                     for s in ["multiplayer", "pokermon"]
@@ -123,6 +151,12 @@ class BuilderTests(unittest.TestCase):
                             0o755,
                         )
                     files = builder.archive_files(output.read_bytes())
+                    info = plistlib.loads(files[app + "Info.plist"])
+                    version = "0.5.5" if stream == "multiplayer" else "3.9.1"
+                    self.assertEqual(info["CFBundleShortVersionString"], version)
+                    self.assertEqual(info["CFBundleVersion"], version)
+                    self.assertEqual(files[app + "Assets.car"], stream.encode())
+                    self.assertFalse(any(p.startswith("builder-icons/") for p in files))
                     self.assertIn(app + "bundled-mods/" + folder + "/mod.lua", files)
                     self.assertIn(app + "bundled-mods/smods/mod.lua", files)
                     self.assertIn(app + "bundled-mods/Extra/mod.lua", files)
@@ -133,7 +167,25 @@ class BuilderTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         plistlib.loads(files[app + "Info.plist"])["CFBundleIdentifier"],
-                        "io.balatro.modbuilder." + stream,
+                        "mod.balatro." + stream,
+                    )
+                    scenes = plistlib.loads(files[app + "Info.plist"])[
+                        "UIApplicationSceneManifest"
+                    ]
+                    self.assertFalse(scenes["UIApplicationSupportsMultipleScenes"])
+                    for key in (
+                        "UISupportedInterfaceOrientations",
+                        "UISupportedInterfaceOrientations~ipad",
+                    ):
+                        self.assertEqual(info[key], [
+                            "UIInterfaceOrientationLandscapeLeft",
+                            "UIInterfaceOrientationLandscapeRight",
+                        ])
+                    self.assertEqual(
+                        scenes["UISceneConfigurations"][
+                            "UIWindowSceneSessionRoleApplication"
+                        ][0]["UISceneDelegateClassName"],
+                        "SDLUIKitSceneDelegate",
                     )
             lock["common"] = {}
             with self.assertRaisesRegex(ValueError, "match"):
@@ -144,6 +196,14 @@ class BuilderTests(unittest.TestCase):
         if not example.exists():
             self.skipTest("Local example not committed")
         self.assertIn("main.lua", builder.game_files(example.read_bytes()))
+
+    def test_local_game_zip_extraction(self):
+        example = builder.ROOT / "local_ipa/Balatro.love.zip"
+        if not example.exists():
+            self.skipTest("Local game ZIP not committed")
+        files = builder.game_files(example.read_bytes())
+        self.assertIn("main.lua", files)
+        self.assertFalse(any(p.startswith("__MACOSX/") for p in files))
 
 
 if __name__ == "__main__":

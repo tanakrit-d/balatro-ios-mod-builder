@@ -1,4 +1,5 @@
 built-example-ipa/
+local_ipa/
 .build/
 dist/
 __pycache__/

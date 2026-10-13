@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['scripts/**', 'native/**', 'static-mods/**', 'versions.lock.json', '.github/workflows/**']
+    paths: ['scripts/**', 'native/**', 'static-mods/**', 'assets/icons/**', 'versions.lock.json', '.github/workflows/**']
 permissions:
   contents: read
 concurrency:

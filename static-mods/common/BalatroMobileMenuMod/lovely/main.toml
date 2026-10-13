@@ -28,7 +28,6 @@ position = "before"
 payload = '''
 	MOBILE = {
 			readable_font = false,
-			fps_cap = 60,
 			skip_tutorial = false,
 			babynames = true,
 	},
