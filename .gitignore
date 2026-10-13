@@ -1,0 +1,7 @@
+built-example-ipa/
+.build/
+dist/
+__pycache__/
+*.ipa
+.venv/
+.ruff_cache/

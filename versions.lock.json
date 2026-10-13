@@ -1,0 +1,47 @@
+{
+  "common": {
+    "dependencies": {
+      "commit": "7ed89c5757b5c4d3e9c143cf910df01d92e59384",
+      "repo": "WilsontheWolf/lmm-love-apple-dependencies"
+    },
+    "lovely": {
+      "url": "https://api.github.com/repos/ethangreen-dev/lovely-injector/zipball/v0.10.0",
+      "version": "v0.10.0"
+    },
+    "luajit": {
+      "commit": "c6ffc141a8762b41703f9287d63d93622a13dd8f",
+      "repo": "LuaJIT/LuaJIT"
+    },
+    "maker": {
+      "commit": "2b00deb63e1cc6f4a7abf14e6bbe39a1ff0d4dbc",
+      "repo": "WilsontheWolf/lovely-mobile-maker"
+    },
+    "runtime": {
+      "commit": "01af71f2f4c33dd08533296d7a66dce0ab520b52",
+      "repo": "WilsontheWolf/lmm-love"
+    }
+  },
+  "schema": 1,
+  "streams": {
+    "multiplayer": {
+      "mod": {
+        "url": "https://s3.andrii.es/balatro-mp-releases/1786733782648-BalatroMultiplayer.zip",
+        "version": "0.5.5"
+      },
+      "smods": {
+        "url": "https://api.github.com/repos/Steamodded/smods/zipball/1.0.0-beta-1620a",
+        "version": "1.0.0-beta-1620a"
+      }
+    },
+    "pokermon": {
+      "mod": {
+        "url": "https://api.github.com/repos/InertSteak/Pokermon/zipball/3.9.1",
+        "version": "3.9.1"
+      },
+      "smods": {
+        "url": "https://api.github.com/repos/Steamodded/smods/zipball/26.1002.0",
+        "version": "26.1002.0"
+      }
+    }
+  }
+}

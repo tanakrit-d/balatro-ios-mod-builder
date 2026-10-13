@@ -1,0 +1,65 @@
+name: Check updates and build iOS streams
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['scripts/**', 'native/**', 'static-mods/**', 'versions.lock.json', '.github/workflows/**']
+permissions:
+  contents: read
+concurrency:
+  group: ios-builder
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -v
+      - uses: actions/cache/restore@v4
+        with:
+          path: .build/last-success.json
+          key: stream-state-${{ github.run_id }}
+          restore-keys: stream-state-
+      - id: resolve
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/builder.py resolve
+          if [ '${{ github.event_name }}' = schedule ] && cmp -s versions.lock.json .build/last-success.json; then
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Rebuild Mobile Maker runtime with latest Lovely
+        if: steps.resolve.outputs.build == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/runtime.py
+      - name: Build both streams
+        if: steps.resolve.outputs.build == 'true'
+        env:
+          BALATRO_GAME_URL: ${{ secrets.BALATRO_GAME_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/builder.py build --stream multiplayer --base .build/base.ipa
+          python scripts/builder.py build --stream pokermon --base .build/base.ipa
+      - uses: actions/upload-artifact@v4
+        if: steps.resolve.outputs.build == 'true'
+        with:
+          name: balatro-ios
+          path: |
+            dist/*.ipa
+            versions.lock.json
+          retention-days: 7
+      - if: steps.resolve.outputs.build == 'true'
+        run: cp versions.lock.json .build/last-success.json
+      - uses: actions/cache/save@v4
+        if: steps.resolve.outputs.build == 'true'
+        with:
+          path: .build/last-success.json
+          key: stream-state-${{ github.run_id }}
