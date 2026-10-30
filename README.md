@@ -2,11 +2,11 @@
 
 Creates and bundles pre-modded versions of Multiplayer and Pokermon.
 
-## Multiplayer (Legacy)
+## Multiplayer (PvP) (Legacy)
 
 Includes the original [Multiplayer 0.5.5](https://github.com/Balatro-Multiplayer/BalatroMultiplayerPvP/tree/v0.5.5). This archived version is separate from Multiplayer PvP and does not receive mod updates.
 
-## Multiplayer (PVP)
+## Multiplayer (PvP)
 
 Includes the mobile branches of [Multiplayer PvP](https://github.com/tanakrit-d/BalatroMultiplayerPvP/tree/mobile) and [MultiplayerAPI](https://github.com/tanakrit-d/BalatroMultiplayerAPI/tree/mobile), with Steam-free login for custom Community servers and native iOS TLS support.
 
