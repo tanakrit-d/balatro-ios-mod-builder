@@ -51,5 +51,10 @@ static void builder_install_mods_at_paths(NSString *bundle, NSString *documents)
 
 extern "C" void builder_install_mods()
 {
-    builder_install_mods_at_paths([[NSBundle mainBundle] resourcePath], NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]);
+    NSString *bundlePath = [[NSBundle mainBundle] resourcePath];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:[bundlePath stringByAppendingPathComponent:@"builder-openssl.json"]]) {
+        setenv("BMP_IOS_OPENSSL", "1", 1);
+        setenv("SSL_CERT_FILE", [[bundlePath stringByAppendingPathComponent:@"tls/cacert.pem"] fileSystemRepresentation], 1);
+    }
+    builder_install_mods_at_paths(bundlePath, NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES)[0]);
 }

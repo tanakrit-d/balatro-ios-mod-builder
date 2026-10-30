@@ -18,7 +18,7 @@ class ReleasePlan(TypedDict):
     tag: str
     name: str
     source: Path
-    prerelease: bool
+    stream: str
     asset: NotRequired[Path]
     notes: NotRequired[Path]
 
@@ -68,9 +68,7 @@ def prepare(lock_path, dist, output, target, streams=("multiplayer", "pokermon")
                 "tag": tag,
                 "name": name,
                 "source": source,
-                # Packaging the new dependencies does not establish iOS support.
-                "prerelease": stream == "multiplayer"
-                and "api" in lock["streams"][stream],
+                "stream": stream,
             }
         )
     # Validate every selected stream before staging or publishing any release.
@@ -80,24 +78,23 @@ def prepare(lock_path, dist, output, target, streams=("multiplayer", "pokermon")
         shutil.copy2(plan["source"], asset)
         notes = output / (plan["tag"] + ".md")
         notes.write_text(
-            "Unsigned iOS IPA. Requires iOS 15 or later and signing for sideloading.\n\n"
-            + "Build commit: `"
+            "Build commit: `"
             + target
             + "`. Exact dependencies are recorded in `versions.lock.json`.\n"
             + (
                 "\nLegacy Multiplayer 0.5.5 with its pinned Steamodded dependency "
                 "and dedicated Legacy icon. Retains the original bundle identifier "
                 "for existing installs. This stream does not track new mod releases.\n"
-                if plan["tag"].startswith("multiplayer-legacy-")
+                if plan["stream"] == "multiplayer-legacy"
                 else ""
             )
             + (
-                "\nExperimental Multiplayer 1.x package. Includes MultiplayerPvP, "
-                "MultiplayerAPI, Steamodded and Lovely. Online play is not supported "
-                "by this iOS runtime: upstream requires Steam authentication and "
-                "desktop OpenSSL libraries. Packaging validation is not an iOS "
-                "login or gameplay test.\n"
-                if plan["prerelease"]
+                "\nBalatro (PVP). Includes MultiplayerPvP, "
+                "MultiplayerAPI, Steamodded, Lovely and statically linked iOS OpenSSL. Uses the forks’ mobile branches "
+                "with Steam-free login for custom Community servers; configure "
+                "mod-configs/multiplayer/MultiplayerAPI/config.lua before building "
+                "to bundle your server defaults.\n"
+                if plan["stream"] == "multiplayer"
                 else ""
             )
         )
@@ -161,7 +158,7 @@ def publish(plan, repo, target, lock):
                 "--notes-file",
                 str(plan["notes"]),
                 "--draft=false",
-                *(["--prerelease"] if plan.get("prerelease") else []),
+                "--prerelease=false",
             ],
             check=True,
         )
@@ -183,7 +180,7 @@ def publish(plan, repo, target, lock):
                 "--notes-file",
                 str(plan["notes"]),
                 "--latest=false",
-                *(["--prerelease"] if plan.get("prerelease") else []),
+                "--prerelease=false",
             ],
             check=True,
         )

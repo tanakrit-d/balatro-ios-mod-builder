@@ -2,10 +2,12 @@
 
 import json
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
 
+import ios_openssl
 from builder import ROOT, zip_bytes
 from icons import compile_icons
 
@@ -27,6 +29,8 @@ def main():
     if work.exists():
         shutil.rmtree(work)
     work.mkdir(parents=True)
+    openssl_work = ROOT / ".build/openssl-ios"
+    openssl_source = ios_openssl.build(openssl_work)
     for name in ["runtime", "luajit"]:
         sources(lock[name]["repo"], lock[name]["commit"], work / name)
     sources(
@@ -155,19 +159,31 @@ def main():
         "ONLY_ACTIVE_ARCH=YES",
         "IPHONEOS_DEPLOYMENT_TARGET=15.0",
         "CODE_SIGNING_ALLOWED=NO",
-        "OTHER_LDFLAGS=$(inherited) -framework Security -framework SystemConfiguration -liconv -lresolv",
+        "OTHER_LDFLAGS=$(inherited) -framework Security -framework SystemConfiguration -liconv -lresolv"
+        + ios_openssl.linker_flags(openssl_source),
+        "DEAD_CODE_STRIPPING=NO",
+        "STRIP_INSTALLED_PRODUCT=NO",
+        "STRIP_STYLE=non-global",
         cwd=love,
     )
     apps = list((love / "ios-build/Build/Products/Release-iphoneos").glob("*.app"))
     if len(apps) != 1:
         raise RuntimeError("Expected one built app")
     app = apps[0]
+    info = plistlib.loads((app / "Info.plist").read_bytes())
+    ios_openssl.verify_exports(app / info["CFBundleExecutable"])
     (app / "builder-runtime.json").write_text(json.dumps(lock, sort_keys=True))
     files = {
         "Payload/" + app.name + "/" + p.relative_to(app).as_posix(): p.read_bytes()
         for p in app.rglob("*")
         if p.is_file()
     }
+    files.update(
+        {
+            "Payload/" + app.name + "/" + n: d
+            for n, d in ios_openssl.resources(openssl_work).items()
+        }
+    )
     files.update(compile_icons(love / "platform/xcode/Images.xcassets"))
     (ROOT / ".build/base.ipa").write_bytes(zip_bytes(files))
 

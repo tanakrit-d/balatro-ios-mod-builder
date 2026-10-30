@@ -112,6 +112,18 @@ class InstallerTests(unittest.TestCase):
         self.install({"Test/assets": b"new"})
         self.assertEqual((self.mods / "Test/assets").read_bytes(), b"new")
 
+    def test_bundled_api_config_updates_without_overwriting_saved_settings(self):
+        self.install({"MultiplayerAPI/config.lua": b"first server defaults"})
+        saved = self.documents / "game/config/MultiplayerAPI.jkr"
+        saved.parent.mkdir(parents=True)
+        saved.write_bytes(b"player settings")
+        self.install({"MultiplayerAPI/config.lua": b"new server defaults"})
+        self.assertEqual(
+            (self.mods / "MultiplayerAPI/config.lua").read_bytes(),
+            b"new server defaults",
+        )
+        self.assertEqual(saved.read_bytes(), b"player settings")
+
     def test_stale_cleanup_preserves_user_files(self):
         self.install({"Test/old.lua": b"old", "Removed/main.lua": b"removed"})
         config = self.mods / "Test/settings/user.json"

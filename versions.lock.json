@@ -16,6 +16,11 @@
       "commit": "2b00deb63e1cc6f4a7abf14e6bbe39a1ff0d4dbc",
       "repo": "WilsontheWolf/lovely-mobile-maker"
     },
+    "openssl": {
+      "adapter": 1,
+      "source_sha256": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a",
+      "version": "3.5.9"
+    },
     "runtime": {
       "commit": "01af71f2f4c33dd08533296d7a66dce0ab520b52",
       "repo": "WilsontheWolf/lmm-love"
@@ -29,12 +34,18 @@
   "streams": {
     "multiplayer": {
       "api": {
-        "url": "https://api.github.com/repos/Balatro-Multiplayer/BalatroMultiplayerAPI/zipball/v1.0.1",
-        "version": "v1.0.1"
+        "branch": "mobile",
+        "commit": "adf71840c483146f13ec2f676cbe68e61d8a87c7",
+        "repo": "tanakrit-d/BalatroMultiplayerAPI",
+        "url": "https://api.github.com/repos/tanakrit-d/BalatroMultiplayerAPI/zipball/adf71840c483146f13ec2f676cbe68e61d8a87c7",
+        "version": "1.0.3"
       },
       "mod": {
-        "url": "https://api.github.com/repos/Balatro-Multiplayer/BalatroMultiplayerPvP/zipball/v1.0.1",
-        "version": "v1.0.1"
+        "branch": "mobile",
+        "commit": "9469dcdf44c57e939a722ea1df3a61b350f6319d",
+        "repo": "tanakrit-d/BalatroMultiplayerPvP",
+        "url": "https://api.github.com/repos/tanakrit-d/BalatroMultiplayerPvP/zipball/9469dcdf44c57e939a722ea1df3a61b350f6319d",
+        "version": "1.0.3"
       },
       "smods": {
         "url": "https://api.github.com/repos/Steamodded/smods/zipball/1.0.0-beta-1814a",

@@ -4,11 +4,13 @@ Creates and bundles pre-modded versions of Multiplayer and Pokermon.
 
 ## Multiplayer (Legacy)
 
-Includes the original [Multiplayer 0.5.5](https://github.com/Balatro-Multiplayer/BalatroMultiplayerPvP/tree/v0.5.5), with its own Legacy icon. This archived version is separate from Multiplayer PvP and does not receive mod updates.
+Includes the original [Multiplayer 0.5.5](https://github.com/Balatro-Multiplayer/BalatroMultiplayerPvP/tree/v0.5.5). This archived version is separate from Multiplayer PvP and does not receive mod updates.
 
-## Multiplayer (MP)
+## Multiplayer (PVP)
 
-Includes [Multiplayer PvP](https://github.com/Balatro-Multiplayer/BalatroMultiplayerPvP) and its MultiplayerAPI dependency for online competitive play. The 1.x iOS package is experimental; online play requires Steam authentication and native networking support that this iOS runtime does not provide.
+Includes the mobile branches of [Multiplayer PvP](https://github.com/tanakrit-d/BalatroMultiplayerPvP/tree/mobile) and [MultiplayerAPI](https://github.com/tanakrit-d/BalatroMultiplayerAPI/tree/mobile), with Steam-free login for custom Community servers and native iOS TLS support.
+
+Set the bundled server defaults in [`mod-configs/multiplayer/MultiplayerAPI/config.lua`](mod-configs/multiplayer/MultiplayerAPI/config.lua). Existing Steamodded saved settings on a device take precedence.
 
 ## Pokermon (PK)
 

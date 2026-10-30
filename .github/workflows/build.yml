@@ -13,7 +13,7 @@ on:
           - multiplayer-legacy
   push:
     branches: [main]
-    paths: ['scripts/**', 'native/**', 'static-mods/**', 'assets/**', 'pyproject.toml', 'uv.lock', 'versions.lock.json', '.github/workflows/**']
+    paths: ['scripts/**', 'native/**', 'static-mods/**', 'mod-configs/**', 'assets/**', 'pyproject.toml', 'uv.lock', 'versions.lock.json', '.github/workflows/**']
 permissions:
   contents: read
 concurrency:

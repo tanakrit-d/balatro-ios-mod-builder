@@ -13,6 +13,7 @@ import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
 
+import ios_openssl
 from game_archive import decrypt
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,7 +59,7 @@ def release(repo, tag=None):
 
 
 def mod_manifest(repo, tag, filename):
-    # Read requirements from the release being bundled, not unreleased main.
+    # Read requirements from the exact release tag or commit being bundled.
     data = get(
         API
         + repo
@@ -116,27 +117,38 @@ def required_smods(manifests):
     return release("Steamodded/smods", tag)
 
 
+def branch_mod(repo, filename, branch="mobile"):
+    # Resolve once, then fetch both metadata and archive at that immutable SHA.
+    commit = get(API + repo + "/commits/" + urllib.parse.quote(branch, safe=""))["sha"]
+    manifest = mod_manifest(repo, commit, filename)
+    version = manifest.get("version")
+    if not isinstance(version, str) or not re.fullmatch(
+        r"v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version
+    ):
+        raise ValueError("Missing or invalid mod version in " + filename)
+    return {
+        "repo": repo,
+        "branch": branch,
+        "commit": commit,
+        "version": version,
+        "url": API + repo + "/zipball/" + commit,
+    }, manifest
+
+
 def resolve():
-    # The legacy launcher feed stopped at 0.5.5. PvP 1.x and its mandatory
-    # API dependency publish separately on GitHub. Resolve stable releases to
-    # concrete tags so API-only updates also invalidate the build state.
-    mp = release("Balatro-Multiplayer/BalatroMultiplayerPvP")
-    mp_api = release("Balatro-Multiplayer/BalatroMultiplayerAPI")
+    # Mobile patches live in our forks. Track commit changes independently of
+    # manifest versions so API-only fixes also invalidate the build state.
+    mp, mp_manifest = branch_mod(
+        "tanakrit-d/BalatroMultiplayerPvP", "MultiplayerPvP.json"
+    )
+    mp_api, api_manifest = branch_mod(
+        "tanakrit-d/BalatroMultiplayerAPI", "MultiplayerAPI.json"
+    )
     mp_smods = required_smods(
-        {
-            "MultiplayerPvP": mod_manifest(
-                "Balatro-Multiplayer/BalatroMultiplayerPvP",
-                mp["version"],
-                "MultiplayerPvP.json",
-            ),
-            "MultiplayerAPI": mod_manifest(
-                "Balatro-Multiplayer/BalatroMultiplayerAPI",
-                mp_api["version"],
-                "MultiplayerAPI.json",
-            ),
-        }
+        {"MultiplayerPvP": mp_manifest, "MultiplayerAPI": api_manifest}
     )
     common = {
+        "openssl": ios_openssl.lock_entry(),
         "lovely": release("ethangreen-dev/lovely-injector"),
         # Match Mobile Maker's SDL ABI, with our UIKit scene lifecycle backport.
         "sdl": {
@@ -254,6 +266,26 @@ def zip_bytes(files):
     return buf.getvalue()
 
 
+def apply_mod_configs(stream, mods):
+    # Stream-specific config defaults for downloaded or static mods. Keep code
+    # overrides separate from this directory: only existing config.lua files fit.
+    root = ROOT / "mod-configs" / stream
+    if root.is_symlink():
+        raise ValueError("Mod config symlinks are unsupported")
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise ValueError("Mod config symlinks are unsupported")
+        if not path.is_file() or path.name == ".gitkeep":
+            continue
+        relative = path.relative_to(root)
+        name = relative.as_posix()
+        if len(relative.parts) != 2 or path.name != "config.lua" or name not in mods:
+            raise ValueError(
+                "Mod config must replace an existing <mod>/config.lua: " + name
+            )
+        mods[name] = path.read_bytes()
+
+
 def package(stream, lock, base, game, output):
     files = archive_files(base)
     plists = [p for p in files if re.fullmatch(r"Payload/[^/]+\.app/Info.plist", p)]
@@ -263,6 +295,8 @@ def package(stream, lock, base, game, output):
     # Base must come from our rebuilt runtime, not an arbitrary old IPA.
     if json.loads(files[app + "builder-runtime.json"]) != lock["common"]:
         raise ValueError("Base runtime does not match dependency lock")
+    if stream == "multiplayer":
+        ios_openssl.validate_runtime(files, app)
     game_archive = zip_bytes(game_files(game))
     mods = {}
     dependencies = [("smods", "smods")]
@@ -277,6 +311,8 @@ def package(stream, lock, base, game, output):
             download(lock["streams"][stream][dependency]["url"]), True
         ).items():
             mods[folder + "/" + name] = data
+    if stream == "multiplayer":
+        ios_openssl.patch_mods(mods)
     reserved = {"smods", "multiplayer", "multiplayerapi", "multiplayerpvp", "pokermon"}
     for group in ["common", stream]:
         root = ROOT / "static-mods" / group
@@ -295,6 +331,7 @@ def package(stream, lock, base, game, output):
                     "Static mods must use unique, nonreserved mod folders: " + name
                 )
             mods[name] = path.read_bytes()
+    apply_mod_configs(stream, mods)
     manifest = {
         name: hashlib.sha256(data).hexdigest() for name, data in sorted(mods.items())
     }
@@ -311,7 +348,7 @@ def package(stream, lock, base, game, output):
         "pokermon": "mod.balatro.pokermon",
     }[stream]
     name = {
-        "multiplayer": "Balatro (MP)",
+        "multiplayer": "Balatro (PVP)",
         "multiplayer-legacy": "Balatro (MP) (Legacy)",
         "pokermon": "Balatro (PK)",
     }[stream]

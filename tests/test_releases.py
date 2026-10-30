@@ -32,10 +32,9 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(len(plans), 1)
             self.assertEqual(plans[0]["tag"], "multiplayer-legacy-0.5.5")
             self.assertEqual(plans[0]["asset"].name, "b-multiplayer-legacy.0.5.5.ipa")
-            self.assertFalse(plans[0]["prerelease"])
             self.assertIn("Legacy", plans[0]["notes"].read_text())
 
-    def test_multiplayer_api_package_is_explicitly_experimental(self):
+    def test_pvp_is_published_as_a_regular_release(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             lock = root / "versions.lock.json"
@@ -55,10 +54,12 @@ class ReleaseTests(unittest.TestCase):
             for stream in ("multiplayer", "pokermon"):
                 (root / ("balatro-" + stream + ".ipa")).write_bytes(b"package")
             plans = releases.prepare(lock, root, root / "output", "commit")
-            self.assertTrue(plans[0]["prerelease"])
-            self.assertFalse(plans[1]["prerelease"])
-            self.assertIn("Steam authentication", plans[0]["notes"].read_text())
-            self.assertNotIn("Experimental", plans[1]["notes"].read_text())
+            self.assertIn(
+                "Steam-free login for custom Community servers",
+                plans[0]["notes"].read_text(),
+            )
+            self.assertIn("Balatro (PVP)", plans[0]["notes"].read_text())
+            self.assertNotIn("experimental", plans[0]["notes"].read_text().lower())
             for existing in (False, True):
                 with (
                     self.subTest(existing=existing),
@@ -70,7 +71,8 @@ class ReleaseTests(unittest.TestCase):
                 ):
                     releases.publish(plans[0], "owner/repo", "commit", lock)
                     commands = [call.args[0] for call in run.call_args_list]
-                    self.assertIn("--prerelease", commands[-1])
+                    self.assertIn("--prerelease=false", commands[-1])
+                    self.assertNotIn("--prerelease", commands[-1])
 
     def test_names_and_missing_stream_prevent_publication(self):
         with tempfile.TemporaryDirectory() as temp:
