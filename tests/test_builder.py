@@ -351,7 +351,7 @@ class BuilderTests(unittest.TestCase):
                     )
                     if stream == "multiplayer-legacy":
                         self.assertEqual(
-                            info["CFBundleDisplayName"], "Balatro (MP) (Legacy)"
+                            info["CFBundleDisplayName"], "Balatro (PvP) (Legacy)"
                         )
                     self.assertIn(app + "bundled-mods/Extra/mod.lua", files)
                     if stream == "multiplayer":

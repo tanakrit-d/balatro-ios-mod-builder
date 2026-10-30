@@ -348,8 +348,8 @@ def package(stream, lock, base, game, output):
         "pokermon": "mod.balatro.pokermon",
     }[stream]
     name = {
-        "multiplayer": "Balatro (PVP)",
-        "multiplayer-legacy": "Balatro (MP) (Legacy)",
+        "multiplayer": "Balatro (PvP)",
+        "multiplayer-legacy": "Balatro (PvP) (Legacy)",
         "pokermon": "Balatro (PK)",
     }[stream]
     info["CFBundleDisplayName"] = name

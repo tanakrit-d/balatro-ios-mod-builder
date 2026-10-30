@@ -32,7 +32,7 @@ class ReleaseTests(unittest.TestCase):
             self.assertEqual(len(plans), 1)
             self.assertEqual(plans[0]["tag"], "multiplayer-legacy-0.5.5")
             self.assertEqual(plans[0]["asset"].name, "b-multiplayer-legacy.0.5.5.ipa")
-            self.assertIn("Legacy", plans[0]["notes"].read_text())
+            self.assertIn("Balatro (PvP) (Legacy)", plans[0]["notes"].read_text())
 
     def test_pvp_is_published_as_a_regular_release(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -58,7 +58,7 @@ class ReleaseTests(unittest.TestCase):
                 "Steam-free login for custom Community servers",
                 plans[0]["notes"].read_text(),
             )
-            self.assertIn("Balatro (PVP)", plans[0]["notes"].read_text())
+            self.assertIn("Balatro (PvP)", plans[0]["notes"].read_text())
             self.assertNotIn("experimental", plans[0]["notes"].read_text().lower())
             for existing in (False, True):
                 with (

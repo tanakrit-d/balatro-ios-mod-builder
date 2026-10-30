@@ -82,14 +82,14 @@ def prepare(lock_path, dist, output, target, streams=("multiplayer", "pokermon")
             + target
             + "`. Exact dependencies are recorded in `versions.lock.json`.\n"
             + (
-                "\nLegacy Multiplayer 0.5.5 with its pinned Steamodded dependency "
+                "\nBalatro (PvP) (Legacy). Multiplayer 0.5.5 with its pinned Steamodded dependency "
                 "and dedicated Legacy icon. Retains the original bundle identifier "
                 "for existing installs. This stream does not track new mod releases.\n"
                 if plan["stream"] == "multiplayer-legacy"
                 else ""
             )
             + (
-                "\nBalatro (PVP). Includes MultiplayerPvP, "
+                "\nBalatro (PvP). Includes MultiplayerPvP, "
                 "MultiplayerAPI, Steamodded, Lovely and statically linked iOS OpenSSL. Uses the forks’ mobile branches "
                 "with Steam-free login for custom Community servers; configure "
                 "mod-configs/multiplayer/MultiplayerAPI/config.lua before building "
