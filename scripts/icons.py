@@ -9,9 +9,9 @@ from pathlib import Path
 from builder import ROOT
 
 
-def compile_icons(catalog):
+def compile_icons(catalog, streams=("multiplayer", "multiplayer-legacy", "pokermon")):
     files = {}
-    for stream in ("multiplayer", "pokermon"):
+    for stream in streams:
         with tempfile.TemporaryDirectory() as temp:
             work = Path(temp)
             assets = work / "Images.xcassets"

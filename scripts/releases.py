@@ -9,8 +9,18 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import NotRequired, TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class ReleasePlan(TypedDict):
+    tag: str
+    name: str
+    source: Path
+    prerelease: bool
+    asset: NotRequired[Path]
+    notes: NotRequired[Path]
 
 
 def release_exists(repo, tag):
@@ -40,10 +50,10 @@ def release_exists(repo, tag):
         raise
 
 
-def prepare(lock_path, dist, output, target):
+def prepare(lock_path, dist, output, target, streams=("multiplayer", "pokermon")):
     lock = json.loads(lock_path.read_text())
-    plans = []
-    for stream in ("multiplayer", "pokermon"):
+    plans: list[ReleasePlan] = []
+    for stream in streams:
         version = lock["streams"][stream]["mod"]["version"].removeprefix("v")
         if "/" in version or "\\" in version:
             raise ValueError("Invalid release version")
@@ -53,8 +63,17 @@ def prepare(lock_path, dist, output, target):
         source = dist / ("balatro-" + stream + ".ipa")
         if not source.is_file():
             raise ValueError("Missing built IPA: " + str(source))
-        plans.append({"tag": tag, "name": name, "source": source})
-    # Validate both streams before staging or publishing either release.
+        plans.append(
+            {
+                "tag": tag,
+                "name": name,
+                "source": source,
+                # Packaging the new dependencies does not establish iOS support.
+                "prerelease": stream == "multiplayer"
+                and "api" in lock["streams"][stream],
+            }
+        )
+    # Validate every selected stream before staging or publishing any release.
     output.mkdir(parents=True, exist_ok=True)
     for plan in plans:
         asset = output / (plan["name"] + ".ipa")
@@ -65,6 +84,22 @@ def prepare(lock_path, dist, output, target):
             + "Build commit: `"
             + target
             + "`. Exact dependencies are recorded in `versions.lock.json`.\n"
+            + (
+                "\nLegacy Multiplayer 0.5.5 with its pinned Steamodded dependency "
+                "and dedicated Legacy icon. Retains the original bundle identifier "
+                "for existing installs. This stream does not track new mod releases.\n"
+                if plan["tag"].startswith("multiplayer-legacy-")
+                else ""
+            )
+            + (
+                "\nExperimental Multiplayer 1.x package. Includes MultiplayerPvP, "
+                "MultiplayerAPI, Steamodded and Lovely. Online play is not supported "
+                "by this iOS runtime: upstream requires Steam authentication and "
+                "desktop OpenSSL libraries. Packaging validation is not an iOS "
+                "login or gameplay test.\n"
+                if plan["prerelease"]
+                else ""
+            )
         )
         plan.update(asset=asset, notes=notes)
     return plans
@@ -126,6 +161,7 @@ def publish(plan, repo, target, lock):
                 "--notes-file",
                 str(plan["notes"]),
                 "--draft=false",
+                *(["--prerelease"] if plan.get("prerelease") else []),
             ],
             check=True,
         )
@@ -147,6 +183,7 @@ def publish(plan, repo, target, lock):
                 "--notes-file",
                 str(plan["notes"]),
                 "--latest=false",
+                *(["--prerelease"] if plan.get("prerelease") else []),
             ],
             check=True,
         )
@@ -160,12 +197,24 @@ def main():
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY"))
     parser.add_argument("--target", default=os.environ.get("GITHUB_SHA"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--stream",
+        action="append",
+        choices=("multiplayer", "multiplayer-legacy", "pokermon"),
+        help="Publish only selected streams; legacy is excluded by default",
+    )
     args = parser.parse_args()
     if not args.target or (not args.dry_run and not args.repo):
         parser.error(
             "--target and --repo (or their GitHub Actions environment variables) are required"
         )
-    plans = prepare(args.lock, args.dist, args.output, args.target)
+    plans = prepare(
+        args.lock,
+        args.dist,
+        args.output,
+        args.target,
+        streams=args.stream or ("multiplayer", "pokermon"),
+    )
     for plan in plans:
         print(plan["name"] + " → " + plan["tag"] + " → " + plan["asset"].name)
         if not args.dry_run:

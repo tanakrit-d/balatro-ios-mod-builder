@@ -87,6 +87,24 @@ class InstallerTests(unittest.TestCase):
         self.install({"Test/assets/new.lua": b"new"})
         self.assertEqual((self.mods / "Test/assets/new.lua").read_bytes(), b"new")
 
+    def test_upgrade_replaces_legacy_multiplayer_with_pvp_and_api(self):
+        self.install(
+            {"Multiplayer/Multiplayer.json": b"legacy", "Multiplayer/core.lua": b"old"}
+        )
+        config = self.documents / "game/config/Multiplayer.jkr"
+        config.parent.mkdir(parents=True)
+        config.write_bytes(b"user config")
+        self.install(
+            {
+                "MultiplayerPvP/MultiplayerPvP.json": b"pvp",
+                "MultiplayerAPI/MultiplayerAPI.json": b"api",
+            }
+        )
+        self.assertFalse((self.mods / "Multiplayer").exists())
+        self.assertTrue((self.mods / "MultiplayerPvP/MultiplayerPvP.json").exists())
+        self.assertTrue((self.mods / "MultiplayerAPI/MultiplayerAPI.json").exists())
+        self.assertEqual(config.read_bytes(), b"user config")
+
     def test_directory_becomes_file(self):
         self.install(
             {"Test/assets/nested/old.lua": b"old", "Test/assets/other.lua": b"other"}

@@ -1,6 +1,7 @@
-"""Resolve upstream versions and package two isolated iOS mod streams."""
+"""Resolve upstream versions and package isolated iOS mod streams."""
 
 import argparse
+import base64
 import hashlib
 import io
 import json
@@ -16,6 +17,19 @@ from game_archive import decrypt
 
 ROOT = Path(__file__).resolve().parents[1]
 API = "https://api.github.com/repos/"
+STREAMS = ("multiplayer", "multiplayer-legacy", "pokermon")
+
+# Frozen launcher-era dependencies. Only built/released when explicitly selected.
+LEGACY_MULTIPLAYER = {
+    "mod": {
+        "version": "0.5.5",
+        "url": "https://s3.andrii.es/balatro-mp-releases/1786733782648-BalatroMultiplayer.zip",
+    },
+    "smods": {
+        "version": "1.0.0-beta-1620a",
+        "url": "https://api.github.com/repos/Steamodded/smods/zipball/1.0.0-beta-1620a",
+    },
+}
 
 
 def download(url):
@@ -43,25 +57,85 @@ def release(repo, tag=None):
     return {"version": data["tag_name"], "url": data["zipball_url"]}
 
 
-def version_key(value):
-    if not re.fullmatch(r"\d+\.\d+\.\d+[a-z]*", value):
-        raise ValueError("Unexpected Multiplayer main version: " + value)
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)([a-z]*)", value)
-    assert match is not None
-    return tuple(map(int, match.groups()[:3])) + (match.group(4),)
+def mod_manifest(repo, tag, filename):
+    # Read requirements from the release being bundled, not unreleased main.
+    data = get(
+        API
+        + repo
+        + "/contents/"
+        + filename
+        + "?ref="
+        + urllib.parse.quote(tag, safe="")
+    )
+    if data.get("encoding") != "base64":
+        raise ValueError("Unsupported manifest encoding for " + repo)
+    manifest = json.loads(base64.b64decode(data["content"]))
+    dependencies = manifest.get("dependencies")
+    if not isinstance(dependencies, list) or not all(
+        isinstance(item, str) for item in dependencies
+    ):
+        raise ValueError("Missing or invalid dependencies in " + filename)
+    return manifest
+
+
+def smods_version_key(value):
+    # Steamodded uses '~BETA-' in mod manifests and '-beta-' in Git tags.
+    match = re.fullmatch(
+        r"(\d+)\.(\d+)\.(\d+)(?:[~-][Bb][Ee][Tt][Aa]-(\d+)([a-z]*))?", value
+    )
+    if match is None:
+        raise ValueError("Unsupported Steamodded version: " + value)
+    major, minor, patch, beta, suffix = match.groups()
+    return (
+        int(major),
+        int(minor),
+        int(patch),
+        beta is None,
+        int(beta or 0),
+        suffix or "",
+    )
+
+
+def required_smods(manifests):
+    minimums = []
+    for name, manifest in manifests.items():
+        requirements = [
+            item for item in manifest["dependencies"] if re.match(r"Steamodded\b", item)
+        ]
+        if len(requirements) != 1:
+            raise ValueError(name + " must declare one Steamodded minimum")
+        match = re.fullmatch(r"Steamodded\s+\(>=([^\s()]+)\)", requirements[0])
+        if match is None:
+            raise ValueError(
+                "Unsupported Steamodded requirement in " + name + ": " + requirements[0]
+            )
+        minimums.append(match[1])
+    minimum = max(minimums, key=smods_version_key)
+    # Pin the declared minimum rather than silently upgrading to SMODS latest.
+    tag = re.sub(r"[~-]beta-", "-beta-", minimum, flags=re.IGNORECASE)
+    return release("Steamodded/smods", tag)
 
 
 def resolve():
-    candidates = [
-        r
-        for r in get("https://balatromp.com/api/releases")
-        if r["branchName"] == "main"
-        and re.fullmatch(r"\d+\.\d+\.\d+[a-z]*", r["version"])
-    ]
-    mp = max(candidates, key=lambda r: version_key(r["version"]))
-    required = mp.get("smods_version")
-    if not required or required == "latest":
-        raise ValueError("Multiplayer must specify an exact SMODS version")
+    # The legacy launcher feed stopped at 0.5.5. PvP 1.x and its mandatory
+    # API dependency publish separately on GitHub. Resolve stable releases to
+    # concrete tags so API-only updates also invalidate the build state.
+    mp = release("Balatro-Multiplayer/BalatroMultiplayerPvP")
+    mp_api = release("Balatro-Multiplayer/BalatroMultiplayerAPI")
+    mp_smods = required_smods(
+        {
+            "MultiplayerPvP": mod_manifest(
+                "Balatro-Multiplayer/BalatroMultiplayerPvP",
+                mp["version"],
+                "MultiplayerPvP.json",
+            ),
+            "MultiplayerAPI": mod_manifest(
+                "Balatro-Multiplayer/BalatroMultiplayerAPI",
+                mp_api["version"],
+                "MultiplayerAPI.json",
+            ),
+        }
+    )
     common = {
         "lovely": release("ethangreen-dev/lovely-injector"),
         # Match Mobile Maker's SDL ABI, with our UIKit scene lifecycle backport.
@@ -85,9 +159,11 @@ def resolve():
         "schema": 1,
         "common": common,
         "streams": {
+            "multiplayer-legacy": LEGACY_MULTIPLAYER,
             "multiplayer": {
-                "mod": {"version": mp["version"], "url": mp["url"]},
-                "smods": release("Steamodded/smods", required),
+                "mod": mp,
+                "api": mp_api,
+                "smods": mp_smods,
             },
             "pokermon": {
                 "mod": release("InertSteak/Pokermon"),
@@ -189,15 +265,19 @@ def package(stream, lock, base, game, output):
         raise ValueError("Base runtime does not match dependency lock")
     game_archive = zip_bytes(game_files(game))
     mods = {}
-    for folder, dependency in [
-        ("smods", "smods"),
-        ("Multiplayer" if stream == "multiplayer" else "Pokermon", "mod"),
-    ]:
+    dependencies = [("smods", "smods")]
+    if stream == "multiplayer":
+        dependencies += [("MultiplayerAPI", "api"), ("MultiplayerPvP", "mod")]
+    elif stream == "multiplayer-legacy":
+        dependencies.append(("Multiplayer", "mod"))
+    else:
+        dependencies.append(("Pokermon", "mod"))
+    for folder, dependency in dependencies:
         for name, data in archive_files(
             download(lock["streams"][stream][dependency]["url"]), True
         ).items():
             mods[folder + "/" + name] = data
-    reserved = {"smods", "multiplayer", "pokermon"}
+    reserved = {"smods", "multiplayer", "multiplayerapi", "multiplayerpvp", "pokermon"}
     for group in ["common", stream]:
         root = ROOT / "static-mods" / group
         for path in sorted(root.rglob("*")):
@@ -224,8 +304,17 @@ def package(stream, lock, base, game, output):
     files[app + "build-manifest.json"] = json.dumps(lock, indent=2).encode()
     files[app + "game.love"] = game_archive
     info = plistlib.loads(files[plists[0]])
-    info["CFBundleIdentifier"] = "mod.balatro." + stream
-    name = "Balatro (MP)" if stream == "multiplayer" else "Balatro (PK)"
+    # Keep PvP installs separate from the frozen 0.5.x Multiplayer app.
+    info["CFBundleIdentifier"] = {
+        "multiplayer": "mod.balatro.multiplayer.pvp",
+        "multiplayer-legacy": "mod.balatro.multiplayer",
+        "pokermon": "mod.balatro.pokermon",
+    }[stream]
+    name = {
+        "multiplayer": "Balatro (MP)",
+        "multiplayer-legacy": "Balatro (MP) (Legacy)",
+        "pokermon": "Balatro (PK)",
+    }[stream]
     info["CFBundleDisplayName"] = name
     info["CFBundleName"] = name
     version = lock["streams"][stream]["mod"]["version"].removeprefix("v")
@@ -279,7 +368,7 @@ def main():
     res = sub.add_parser("resolve")
     res.add_argument("--output", type=Path, default=ROOT / "versions.lock.json")
     build = sub.add_parser("build")
-    build.add_argument("--stream", choices=["multiplayer", "pokermon"], required=True)
+    build.add_argument("--stream", choices=STREAMS, required=True)
     build.add_argument("--base", type=Path, required=True)
     build.add_argument(
         "--game",

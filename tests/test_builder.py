@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 import plistlib
@@ -67,44 +68,121 @@ class BuilderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             builder.archive_files(buf.getvalue())
 
-    def test_multiplayer_requires_exact_smods(self):
-        records = [
-            {"branchName": "main", "version": "0.5.0", "smods_version": "latest"}
-        ]
-        with (
-            patch.object(builder, "get", return_value=records),
-            self.assertRaisesRegex(ValueError, "exact"),
-        ):
-            builder.resolve()
-
-    def test_resolution_uses_version_and_exact_tag(self):
-        records = [
-            {
-                "branchName": "main",
-                "version": v,
-                "smods_version": "strict",
-                "url": "https://example.com/mod",
-            }
-            for v in ["0.5.1", "0.2.13c", "0.2.13c~smallworld", "0.5.0"]
-        ]
+    def test_resolution_tracks_pvp_api_and_manifest_pinned_smods(self):
+        versions = {
+            "Balatro-Multiplayer/BalatroMultiplayerPvP": "v1.0.1",
+            "Balatro-Multiplayer/BalatroMultiplayerAPI": "v1.0.2",
+            "Steamodded/smods": "26.1002.0",
+        }
 
         def get(url):
-            return records if "balatromp" in url else [{"sha": "commit"}]
+            self.assertTrue(url.startswith(builder.API))
+            if "/commits?" in url:
+                return [{"sha": "commit"}]
+            if "/contents/" in url:
+                repo, query = url.removeprefix(builder.API).split("/contents/")
+                self.assertTrue(query.endswith("?ref=" + versions[repo]))
+                return {
+                    "encoding": "base64",
+                    "content": base64.b64encode(
+                        json.dumps(
+                            {"dependencies": ["Steamodded (>=1.0.0~BETA-1814a)"]}
+                        ).encode()
+                    ).decode(),
+                }
+            if "/releases/tags/" in url:
+                self.assertTrue(url.endswith("/releases/tags/1.0.0-beta-1814a"))
+                return {
+                    "tag_name": "1.0.0-beta-1814a",
+                    "zipball_url": "https://example.com/pinned-smods",
+                }
+            self.assertTrue(url.endswith("/releases/latest"))
+            repo = url.removeprefix(builder.API).removesuffix("/releases/latest")
+            version = versions.get(repo, "v-test")
+            return {
+                "tag_name": version,
+                "zipball_url": builder.API + repo + "/zipball/" + version,
+            }
 
+        with patch.object(builder, "get", side_effect=get):
+            lock = builder.resolve()
+            mp = lock["streams"]["multiplayer"]
+            self.assertEqual(mp["mod"]["version"], "v1.0.1")
+            self.assertEqual(mp["api"]["version"], "v1.0.2")
+            self.assertEqual(mp["smods"]["version"], "1.0.0-beta-1814a")
+            self.assertEqual(
+                lock["streams"]["pokermon"]["smods"]["version"], "26.1002.0"
+            )
+            self.assertNotIn("latest", json.dumps(lock))
+            versions["Balatro-Multiplayer/BalatroMultiplayerAPI"] = "v1.0.3"
+            updated = builder.resolve()
+            self.assertNotEqual(lock, updated)
+            self.assertEqual(mp["mod"], updated["streams"]["multiplayer"]["mod"])
+
+    def test_smods_pin_uses_stricter_minimum_from_both_mods(self):
+        for pvp, api, expected in [
+            ("1.0.0~BETA-1814a", "1.0.0~BETA-1814b", "1.0.0-beta-1814b"),
+            ("1.0.0~BETA-2000a", "1.0.0~BETA-900a", "1.0.0-beta-2000a"),
+            ("1.0.0~BETA-1814a", "26.1002.0", "26.1002.0"),
+            ("1.0.0~BETA-1814a", "1.0.0", "1.0.0"),
+        ]:
+            with (
+                self.subTest(pvp=pvp, api=api),
+                patch.object(builder, "release") as release,
+            ):
+                manifests = {
+                    name: {"dependencies": [f"Steamodded (>={minimum})"]}
+                    for name, minimum in [("PvP", pvp), ("API", api)]
+                }
+                builder.required_smods(manifests)
+                release.assert_called_once_with("Steamodded/smods", expected)
+
+    def test_smods_requirements_fail_closed_instead_of_using_latest(self):
+        for requirements in [
+            [],
+            ["Lovely (>=0.10)"],
+            ["Steamodded"],
+            ["Steamodded (<=1.0.0)"],
+            ["Steamodded (>=1.0.0) (<=2.0.0)"],
+            ["Steamodded (>=unknown)"],
+            ["Steamodded (>=1.0.0)", "Steamodded (>=2.0.0)"],
+        ]:
+            with (
+                self.subTest(requirements=requirements),
+                patch.object(builder, "release") as release,
+                self.assertRaisesRegex(ValueError, "Steamodded"),
+            ):
+                builder.required_smods({"PvP": {"dependencies": requirements}})
+            release.assert_not_called()
+
+    def test_missing_manifest_dependencies_abort_resolution(self):
+        for dependencies in (None, "Steamodded (>=1.0.0)", [None]):
+            with (
+                self.subTest(dependencies=dependencies),
+                patch.object(
+                    builder,
+                    "get",
+                    return_value={
+                        "encoding": "base64",
+                        "content": base64.b64encode(
+                            json.dumps({"dependencies": dependencies}).encode()
+                        ).decode(),
+                    },
+                ),
+                self.assertRaisesRegex(ValueError, "dependencies"),
+            ):
+                builder.mod_manifest("owner/repo", "v1.0.1", "mod.json")
+
+    def test_missing_api_release_does_not_fall_back_to_legacy(self):
         with (
-            patch.object(builder, "get", side_effect=get),
             patch.object(
                 builder,
                 "release",
-                side_effect=lambda repo, tag=None: {
-                    "version": tag or "latest-resolved",
-                    "url": "https://example.com/source",
-                },
-            ) as release,
+                side_effect=[{"version": "v1.0.1"}, ValueError("API release missing")],
+            ),
+            self.assertRaisesRegex(ValueError, "API release missing"),
         ):
-            lock = builder.resolve()
-            self.assertEqual(lock["streams"]["multiplayer"]["mod"]["version"], "0.5.1")
-            release.assert_any_call("Steamodded/smods", "strict")
+            builder.resolve()
 
     def test_package_contains_both_dependencies_and_static_mods(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -122,7 +200,7 @@ class BuilderTests(unittest.TestCase):
                     app + "_CodeSignature/CodeResources": b"old",
                     **{
                         "builder-icons/" + stream + "/" + name: data
-                        for stream in ("multiplayer", "pokermon")
+                        for stream in builder.STREAMS
                         for name, data in {
                             "Assets.car": stream.encode(),
                             "NewIcon.png": stream.encode() + b" icon",
@@ -145,11 +223,25 @@ class BuilderTests(unittest.TestCase):
                     s: {
                         "mod": {
                             "url": "https://example.com/mod",
-                            "version": "0.5.5" if s == "multiplayer" else "v3.9.1",
+                            "version": {
+                                "multiplayer": "v1.0.1",
+                                "multiplayer-legacy": "0.5.5",
+                                "pokermon": "v3.9.1",
+                            }[s],
                         },
                         "smods": {"url": "https://example.com/smods"},
+                        **(
+                            {
+                                "api": {
+                                    "url": "https://example.com/api",
+                                    "version": "v1.0.1",
+                                }
+                            }
+                            if s == "multiplayer"
+                            else {}
+                        ),
                     }
-                    for s in ["multiplayer", "pokermon"]
+                    for s in builder.STREAMS
                 },
             }
             mod = builder.zip_bytes({"repo/mod.lua": b"mod"})
@@ -165,7 +257,8 @@ class BuilderTests(unittest.TestCase):
                 patch.object(builder, "download", return_value=mod),
             ):
                 for stream, folder in [
-                    ("multiplayer", "Multiplayer"),
+                    ("multiplayer", "MultiplayerPvP"),
+                    ("multiplayer-legacy", "Multiplayer"),
                     ("pokermon", "Pokermon"),
                 ]:
                     output = root / (stream + ".ipa")
@@ -177,7 +270,11 @@ class BuilderTests(unittest.TestCase):
                         )
                     files = builder.archive_files(output.read_bytes())
                     info = plistlib.loads(files[app + "Info.plist"])
-                    version = "0.5.5" if stream == "multiplayer" else "3.9.1"
+                    version = {
+                        "multiplayer": "1.0.1",
+                        "multiplayer-legacy": "0.5.5",
+                        "pokermon": "3.9.1",
+                    }[stream]
                     self.assertEqual(info["CFBundleShortVersionString"], version)
                     self.assertEqual(info["CFBundleVersion"], version)
                     self.assertEqual(files[app + "Assets.car"], stream.encode())
@@ -187,6 +284,18 @@ class BuilderTests(unittest.TestCase):
                     self.assertFalse(any(p.startswith("builder-icons/") for p in files))
                     self.assertIn(app + "bundled-mods/" + folder + "/mod.lua", files)
                     self.assertIn(app + "bundled-mods/smods/mod.lua", files)
+                    self.assertEqual(
+                        app + "bundled-mods/MultiplayerAPI/mod.lua" in files,
+                        stream == "multiplayer",
+                    )
+                    self.assertEqual(
+                        app + "bundled-mods/Multiplayer/mod.lua" in files,
+                        stream == "multiplayer-legacy",
+                    )
+                    if stream == "multiplayer-legacy":
+                        self.assertEqual(
+                            info["CFBundleDisplayName"], "Balatro (MP) (Legacy)"
+                        )
                     self.assertIn(app + "bundled-mods/Extra/mod.lua", files)
                     self.assertNotIn(app + "_CodeSignature/CodeResources", files)
                     self.assertEqual(
@@ -195,7 +304,11 @@ class BuilderTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         plistlib.loads(files[app + "Info.plist"])["CFBundleIdentifier"],
-                        "mod.balatro." + stream,
+                        {
+                            "multiplayer": "mod.balatro.multiplayer.pvp",
+                            "multiplayer-legacy": "mod.balatro.multiplayer",
+                            "pokermon": "mod.balatro.pokermon",
+                        }[stream],
                     )
                     scenes = plistlib.loads(files[app + "Info.plist"])[
                         "UIApplicationSceneManifest"

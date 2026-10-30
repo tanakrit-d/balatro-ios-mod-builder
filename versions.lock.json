@@ -28,6 +28,20 @@
   "schema": 1,
   "streams": {
     "multiplayer": {
+      "api": {
+        "url": "https://api.github.com/repos/Balatro-Multiplayer/BalatroMultiplayerAPI/zipball/v1.0.1",
+        "version": "v1.0.1"
+      },
+      "mod": {
+        "url": "https://api.github.com/repos/Balatro-Multiplayer/BalatroMultiplayerPvP/zipball/v1.0.1",
+        "version": "v1.0.1"
+      },
+      "smods": {
+        "url": "https://api.github.com/repos/Steamodded/smods/zipball/1.0.0-beta-1814a",
+        "version": "1.0.0-beta-1814a"
+      }
+    },
+    "multiplayer-legacy": {
       "mod": {
         "url": "https://s3.andrii.es/balatro-mp-releases/1786733782648-BalatroMultiplayer.zip",
         "version": "0.5.5"

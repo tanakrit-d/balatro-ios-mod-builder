@@ -3,6 +3,14 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+    inputs:
+      stream:
+        description: Streams to build and release
+        type: choice
+        default: current
+        options:
+          - current
+          - multiplayer-legacy
   push:
     branches: [main]
     paths: ['scripts/**', 'native/**', 'static-mods/**', 'assets/**', 'pyproject.toml', 'uv.lock', 'versions.lock.json', '.github/workflows/**']
@@ -44,14 +52,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: uv run --no-sync python scripts/runtime.py
-      - name: Build both streams
+      - name: Build selected streams
         if: steps.resolve.outputs.build == 'true'
         env:
           BALATRO_GAME_KEY: ${{ secrets.BALATRO_GAME_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
+          BUILD_STREAM: ${{ inputs.stream || 'current' }}
         run: |
-          uv run --no-sync python scripts/builder.py build --stream multiplayer --base .build/base.ipa
-          uv run --no-sync python scripts/builder.py build --stream pokermon --base .build/base.ipa
+          if [ "$BUILD_STREAM" = multiplayer-legacy ]; then
+            uv run --no-sync python scripts/builder.py build --stream multiplayer-legacy --base .build/base.ipa
+          else
+            uv run --no-sync python scripts/builder.py build --stream multiplayer --base .build/base.ipa
+            uv run --no-sync python scripts/builder.py build --stream pokermon --base .build/base.ipa
+          fi
       - uses: actions/upload-artifact@v7
         if: steps.resolve.outputs.build == 'true'
         with:
@@ -75,12 +88,20 @@ jobs:
       - name: Publish stream releases
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/releases.py
+          BUILD_STREAM: ${{ inputs.stream || 'current' }}
+        run: |
+          if [ "$BUILD_STREAM" = multiplayer-legacy ]; then
+            python3 scripts/releases.py --stream multiplayer-legacy
+          else
+            python3 scripts/releases.py
+          fi
       - name: Record successful publication
+        if: inputs.stream != 'multiplayer-legacy'
         run: |
           mkdir -p .build
           cp versions.lock.json .build/last-success.json
       - uses: actions/cache/save@v6
+        if: inputs.stream != 'multiplayer-legacy'
         with:
           path: .build/last-success.json
           key: stream-state-${{ github.run_id }}
