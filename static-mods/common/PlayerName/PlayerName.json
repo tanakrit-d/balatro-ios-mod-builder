@@ -1,0 +1,12 @@
+{
+  "id": "PlayerName",
+  "name": "Player Name",
+  "display_name": "Player Name",
+  "author": ["tanakrit-d"],
+  "description": "Rename the active profile with the device keyboard and share its name with supported multiplayer mods.",
+  "prefix": "playername",
+  "main_file": "main.lua",
+  "priority": 100010,
+  "version": "1.0.0",
+  "dependencies": ["Steamodded (>=1.0.0~BETA-1224a)"]
+}
