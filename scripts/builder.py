@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 
 import ios_openssl
 from game_archive import decrypt
+from package_version import versions
 
 ROOT = Path(__file__).resolve().parents[1]
 API = "https://api.github.com/repos/"
@@ -354,9 +355,9 @@ def package(stream, lock, base, game, output):
     }[stream]
     info["CFBundleDisplayName"] = name
     info["CFBundleName"] = name
-    version = lock["streams"][stream]["mod"]["version"].removeprefix("v")
+    version, build_version = versions(lock, stream)
     info["CFBundleShortVersionString"] = version
-    info["CFBundleVersion"] = version
+    info["CFBundleVersion"] = build_version
     icon_root = "builder-icons/" + stream + "/"
     icon_info = files.get(icon_root + "icon-info.plist")
     if icon_info is None:

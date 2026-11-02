@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 import tempfile
@@ -60,19 +61,14 @@ class ReleaseTests(unittest.TestCase):
             )
             self.assertIn("Balatro (PvP)", plans[0]["notes"].read_text())
             self.assertNotIn("experimental", plans[0]["notes"].read_text().lower())
-            for existing in (False, True):
-                with (
-                    self.subTest(existing=existing),
-                    patch.object(releases, "release_exists", return_value=existing),
-                    patch.object(
-                        releases.subprocess, "check_output", return_value="sha\n"
-                    ),
-                    patch.object(releases.subprocess, "run") as run,
-                ):
-                    releases.publish(plans[0], "owner/repo", "commit", lock)
-                    commands = [call.args[0] for call in run.call_args_list]
-                    self.assertIn("--prerelease=false", commands[-1])
-                    self.assertNotIn("--prerelease", commands[-1])
+            with (
+                patch.object(releases, "release_exists", return_value=False),
+                patch.object(releases.subprocess, "run") as run,
+            ):
+                releases.publish(
+                    plans[0], "tanakrit-d/balatro-ios-mod-builder", "commit", lock
+                )
+                self.assertIn("--prerelease=false", run.call_args.args[0])
 
     def test_names_and_missing_stream_prevent_publication(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -102,58 +98,84 @@ class ReleaseTests(unittest.TestCase):
                 ["b-multiplayer.0.5.5.ipa", "b-pokermon.3.9.1.ipa"],
             )
 
-    def test_create_and_existing_release_update(self):
-        plan = {
-            "tag": "multiplayer-0.5.5",
-            "name": "b-multiplayer.0.5.5",
-            "asset": Path("game.ipa"),
-            "notes": Path("notes.md"),
-        }
-        for existing in (False, True):
+    def test_existing_release_is_verified_without_mutation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            asset, lock = root / "game.ipa", root / "versions.lock.json"
+            asset.write_bytes(b"package")
+            lock.write_bytes(b"lock")
+            plan = {
+                "tag": "multiplayer-1.0.3-1000.32.1",
+                "name": "package",
+                "asset": asset,
+                "notes": root / "notes.md",
+            }
+            data = {
+                "draft": False,
+                "assets": [
+                    {
+                        "name": path.name,
+                        "digest": "sha256:"
+                        + hashlib.sha256(path.read_bytes()).hexdigest(),
+                    }
+                    for path in (asset, lock)
+                ],
+            }
             with (
-                self.subTest(existing=existing),
-                patch.object(releases, "release_exists", return_value=existing),
+                patch.object(releases, "release_exists", return_value=True),
                 patch.object(
-                    releases.subprocess,
-                    "check_output",
-                    return_value="resolved-build-sha\n",
-                ) as resolve,
+                    releases.subprocess, "check_output", return_value=json.dumps(data)
+                ),
                 patch.object(releases.subprocess, "run") as run,
             ):
                 releases.publish(
-                    plan, "owner/repo", "exact-build-commit", Path("versions.lock.json")
+                    plan, "tanakrit-d/balatro-ios-mod-builder", "commit", lock
                 )
-                commands = [call.args[0] for call in run.call_args_list]
-                if existing:
-                    self.assertEqual(
-                        [c[:3] for c in commands],
-                        [
-                            ["gh", "release", "upload"],
-                            [
-                                "gh",
-                                "api",
-                                "repos/owner/repo/git/refs/tags/multiplayer-0.5.5",
-                            ],
-                            ["gh", "release", "edit"],
-                        ],
+                run.assert_not_called()
+                asset.write_bytes(b"different package")
+                with self.assertRaisesRegex(ValueError, "Immutable release"):
+                    releases.publish(
+                        plan, "tanakrit-d/balatro-ios-mod-builder", "commit", lock
                     )
-                    self.assertIn("--clobber", commands[0])
-                    self.assertIn("sha=resolved-build-sha", commands[1])
-                    self.assertIn("force=true", commands[1])
-                    resolve.assert_called_once_with(
-                        [
-                            "gh",
-                            "api",
-                            "repos/owner/repo/commits/exact-build-commit",
-                            "--jq",
-                            ".sha",
-                        ],
-                        text=True,
-                    )
-                else:
-                    resolve.assert_not_called()
-                    self.assertEqual(commands[0][:3], ["gh", "release", "create"])
-                    self.assertIn("exact-build-commit", commands[0])
+                run.assert_not_called()
+
+    def test_revision_is_in_release_tag_asset_and_notes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            lock = root / "versions.lock.json"
+            lock.write_text(
+                json.dumps(
+                    {
+                        "build": {"version": "1000.32.1", "revision": "32.1"},
+                        "streams": {
+                            "multiplayer": {
+                                "mod": {"version": "1.0.3"},
+                                "release_status": {"ready": True},
+                            }
+                        },
+                    }
+                )
+            )
+            (root / "balatro-multiplayer.ipa").write_bytes(b"package")
+            plan = releases.prepare(
+                lock, root, root / "output", "commit", streams=("multiplayer",)
+            )[0]
+            self.assertEqual(plan["tag"], "multiplayer-1.0.3-1000.32.1")
+            self.assertEqual(plan["asset"].name, "b-multiplayer.1.0.3-1000.32.1.ipa")
+            self.assertIn("32.1", plan["notes"].read_text())
+
+    def test_publishing_to_any_other_repository_is_rejected(self):
+        with (
+            patch.object(releases, "release_exists") as lookup,
+            self.assertRaisesRegex(ValueError, "restricted"),
+        ):
+            releases.publish(
+                {"tag": "tag", "name": "name"},
+                "Balatro-Multiplayer/BalatroMultiplayerPvP",
+                "commit",
+                Path("lock"),
+            )
+        lookup.assert_not_called()
 
     def test_only_404_means_missing_release(self):
         for code in (404, 403, 500):
@@ -169,25 +191,3 @@ class ReleaseTests(unittest.TestCase):
                 else:
                     with self.assertRaises(urllib.error.HTTPError):
                         releases.release_exists("owner/repo", "tag")
-
-    def test_invalid_target_does_not_replace_release_assets(self):
-        plan = {
-            "tag": "multiplayer-0.5.5",
-            "name": "b-multiplayer.0.5.5",
-            "asset": Path("game.ipa"),
-            "notes": Path("notes.md"),
-        }
-        with (
-            patch.object(releases, "release_exists", return_value=True),
-            patch.object(
-                releases.subprocess,
-                "check_output",
-                side_effect=releases.subprocess.CalledProcessError(1, "gh"),
-            ),
-            patch.object(releases.subprocess, "run") as run,
-            self.assertRaises(releases.subprocess.CalledProcessError),
-        ):
-            releases.publish(
-                plan, "owner/repo", "missing-commit", Path("versions.lock.json")
-            )
-        run.assert_not_called()

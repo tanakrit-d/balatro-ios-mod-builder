@@ -1,6 +1,7 @@
 """Publish each built stream as a separately versioned GitHub release."""
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -10,6 +11,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import NotRequired, TypedDict
+
+from package_version import release_version
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -54,7 +57,15 @@ def prepare(lock_path, dist, output, target, streams=("multiplayer", "pokermon")
     lock = json.loads(lock_path.read_text())
     plans: list[ReleasePlan] = []
     for stream in streams:
-        version = lock["streams"][stream]["mod"]["version"].removeprefix("v")
+        if (
+            stream == "multiplayer"
+            and "build" in lock
+            and not lock["streams"][stream]
+            .get("release_status", {})
+            .get("ready", False)
+        ):
+            raise ValueError("Stable PvP publication is waiting for official releases")
+        version = release_version(lock, stream)
         if "/" in version or "\\" in version:
             raise ValueError("Invalid release version")
         tag = stream + "-" + version
@@ -82,6 +93,15 @@ def prepare(lock_path, dist, output, target, streams=("multiplayer", "pokermon")
             + target
             + "`. Exact dependencies are recorded in `versions.lock.json`.\n"
             + (
+                "\nMobile package revision: `"
+                + lock["build"]["revision"]
+                + "`. iOS build: `"
+                + lock["build"]["version"]
+                + "`.\n"
+                if "build" in lock
+                else ""
+            )
+            + (
                 "\nBalatro (PvP) (Legacy). Multiplayer 0.5.5 with its pinned Steamodded dependency "
                 "and dedicated Legacy icon. Retains the original bundle identifier "
                 "for existing installs. This stream does not track new mod releases.\n"
@@ -98,70 +118,57 @@ def prepare(lock_path, dist, output, target, streams=("multiplayer", "pokermon")
                 else ""
             )
         )
+        if plan["stream"] == "multiplayer" and "dependencies" in lock["streams"][
+            "multiplayer"
+        ].get("release_status", {}):
+            dependencies = lock["streams"]["multiplayer"]
+            with notes.open("a") as notes_file:
+                for key in ("api", "mod"):
+                    dependency = dependencies[key]
+                    official = dependencies["release_status"]["dependencies"][key]
+                    notes_file.write(
+                        "\n"
+                        + dependency["repo"]
+                        + ": mod `"
+                        + dependency["version"]
+                        + "`, mobile commit `"
+                        + dependency["commit"]
+                        + "`, official release `"
+                        + official["tag"]
+                        + "`.\n"
+                    )
         plan.update(asset=asset, notes=notes)
     return plans
 
 
 def publish(plan, repo, target, lock):
     tag, title = plan["tag"], plan["name"]
+    if repo != "tanakrit-d/balatro-ios-mod-builder":
+        raise ValueError("Publishing is restricted to the tanakrit-d builder fork")
     if release_exists(repo, tag):
-        # Resolve branch names as well as commit SHAs before replacing any assets.
-        sha = subprocess.check_output(
-            [
-                "gh",
-                "api",
-                "repos/" + repo + "/commits/" + urllib.parse.quote(target, safe=""),
-                "--jq",
-                ".sha",
-            ],
-            text=True,
-        ).strip()
-        subprocess.run(
-            [
-                "gh",
-                "release",
-                "upload",
-                tag,
-                str(plan["asset"]),
-                str(lock),
-                "--repo",
-                repo,
-                "--clobber",
-            ],
-            check=True,
+        # A retry may reuse an identical complete publication, but never edit it.
+        release = json.loads(
+            subprocess.check_output(
+                [
+                    "gh",
+                    "api",
+                    "repos/"
+                    + repo
+                    + "/releases/tags/"
+                    + urllib.parse.quote(tag, safe=""),
+                ],
+                text=True,
+            )
         )
-        # Editing a release's target does not move an existing Git tag.
-        subprocess.run(
-            [
-                "gh",
-                "api",
-                "repos/" + repo + "/git/refs/tags/" + urllib.parse.quote(tag, safe=""),
-                "--method",
-                "PATCH",
-                "--raw-field",
-                "sha=" + sha,
-                "--field",
-                "force=true",
-            ],
-            check=True,
-        )
-        subprocess.run(
-            [
-                "gh",
-                "release",
-                "edit",
-                tag,
-                "--repo",
-                repo,
-                "--title",
-                title,
-                "--notes-file",
-                str(plan["notes"]),
-                "--draft=false",
-                "--prerelease=false",
-            ],
-            check=True,
-        )
+        assets = {asset["name"]: asset for asset in release["assets"]}
+        for path in (plan["asset"], lock):
+            digest = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+            if release["draft"] or assets.get(path.name, {}).get("digest") != digest:
+                raise ValueError(
+                    "Immutable release already exists with different or incomplete assets; start a new workflow run: "
+                    + tag
+                )
+        print("Verified existing immutable release: " + tag)
     else:
         subprocess.run(
             [

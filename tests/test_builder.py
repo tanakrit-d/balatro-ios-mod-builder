@@ -268,6 +268,7 @@ class BuilderTests(unittest.TestCase):
                 }
             )
             lock = {
+                "build": {"version": "1000.32.1"},
                 "common": common,
                 "streams": {
                     s: {
@@ -333,7 +334,7 @@ class BuilderTests(unittest.TestCase):
                         "pokermon": "3.9.1",
                     }[stream]
                     self.assertEqual(info["CFBundleShortVersionString"], version)
-                    self.assertEqual(info["CFBundleVersion"], version)
+                    self.assertEqual(info["CFBundleVersion"], "1000.32.1")
                     self.assertEqual(files[app + "Assets.car"], stream.encode())
                     self.assertEqual(
                         files[app + "NewIcon.png"], stream.encode() + b" icon"

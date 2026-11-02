@@ -16,6 +16,8 @@ Creates and bundles pre-modded versions of Multiplayer and Pokermon.
 
 All streams also include Lovely, the runtime injector used to apply mod patches.
 
+[Mobile releases](RELEASE_PROCESS.md) follow official release tags, preserve mobile patches, and give each iOS package its own build number.
+
 ## Multiplayer (PvP) (Legacy)
 
 Includes the original [Multiplayer 0.5.5](https://github.com/Balatro-Multiplayer/BalatroMultiplayerPvP/tree/v0.5.5). This archived version is separate from Multiplayer PvP and does not receive mod updates.
