@@ -1,16 +1,41 @@
 """Build static iOS OpenSSL and adapt MPAPI's desktop loader for the app."""
 
 import hashlib
+import http.client
 import io
 import json
 import os
 import subprocess
 import tarfile
+import time
+import urllib.error
 import urllib.request
 
 VERSION = "3.5.9"
 SOURCE_SHA256 = "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
 SOURCE_URL = f"https://github.com/openssl/openssl/releases/download/openssl-{VERSION}/openssl-{VERSION}.tar.gz"
+
+
+def download(url):
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(url, timeout=120) as response:
+                return response.read()
+        except urllib.error.HTTPError as error:
+            error.close()
+            if error.code not in (408, 429, 500, 502, 503, 504) or attempt == 3:
+                raise
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            ConnectionError,
+            http.client.IncompleteRead,
+        ):
+            if attempt == 3:
+                raise
+        delay = 2 ** (attempt + 1)
+        print(f"Download failed for {url}; retrying in {delay}s", flush=True)
+        time.sleep(delay)
 
 
 def lock_entry():
@@ -65,8 +90,7 @@ def build(work):
     work.mkdir(parents=True, exist_ok=True)
     archive = work / "openssl.tar.gz"
     if not archive.exists():
-        with urllib.request.urlopen(SOURCE_URL, timeout=120) as response:
-            archive.write_bytes(response.read())
+        archive.write_bytes(download(SOURCE_URL))
     data = archive.read_bytes()
     if hashlib.sha256(data).hexdigest() != SOURCE_SHA256:
         raise ValueError("OpenSSL source checksum mismatch")
@@ -98,10 +122,7 @@ def build(work):
     subprocess.run(["make", "-j6"], cwd=source, env=env, check=True)
     ca = work / "cacert.pem"
     if not ca.exists():
-        with urllib.request.urlopen(
-            "https://curl.se/ca/cacert.pem", timeout=120
-        ) as response:
-            ca.write_bytes(response.read())
+        ca.write_bytes(download("https://curl.se/ca/cacert.pem"))
     if b"-----BEGIN CERTIFICATE-----" not in ca.read_bytes():
         raise ValueError("Invalid CA bundle")
     return source
