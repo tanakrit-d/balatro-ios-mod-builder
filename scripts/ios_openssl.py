@@ -159,35 +159,14 @@ def resources(work):
     }
 
 
-def patch_mods(mods):
-    path = "MultiplayerAPI/networking/openssl_ffi.lua"
-    text = mods[path].decode()
-    anchor = "local function load_openssl()\n\tif openssl_loaded then\n\t\treturn true\n\tend\n"
-    if text.count(anchor) != 1:
-        raise ValueError("MPAPI OpenSSL loader changed; inspect iOS adapter")
-    adapter = """
-	-- The iOS runtime links OpenSSL statically and exports it for every Lua
-	-- state, including networking workers. Never dlopen the desktop dylibs.
-	if os.getenv('BMP_IOS_OPENSSL') == '1' then
-		local ok, err = pcall(function()
-			ssl_lib, crypto_lib = ffi.C, ffi.C
-			if ssl_lib.OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS + OPENSSL_INIT_LOAD_CRYPTO_STRINGS, nil) ~= 1 then
-				error('iOS OpenSSL initialization failed')
-			end
-			-- Resolve the key entry points before advertising TLS availability.
-			assert(ssl_lib.TLS_client_method() ~= nil)
-			assert(crypto_lib.EVP_sha256() ~= nil)
-		end)
-		if not ok then
-			ssl_error('iOS static OpenSSL: ' .. tostring(err))
-			return false, err
-		end
-		openssl_loaded = true
-		ssl_log('Using OpenSSL linked into the iOS runtime')
-		return true
-	end
-"""
-    mods[path] = text.replace(anchor, anchor + adapter).encode()
+def prepare_mods(mods):
+    # Source releases already contain the iOS loader. Never inject it twice.
+    text = mods["MultiplayerAPI/networking/openssl_ffi.lua"].decode()
+    if (
+        "BMP_IOS_OPENSSL" not in text
+        or "ssl_lib, crypto_lib = ffi.C, ffi.C" not in text
+    ):
+        raise ValueError("Patched API is missing the iOS OpenSSL loader")
     for name in list(mods):
         if name.startswith("MultiplayerAPI/networking/") and name.endswith(
             (".dylib", ".dll")

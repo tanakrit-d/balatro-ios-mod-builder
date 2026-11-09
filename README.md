@@ -24,7 +24,7 @@ Includes the original [Multiplayer 0.5.5](https://github.com/Balatro-Multiplayer
 
 ## Multiplayer (PvP)
 
-Includes the mobile branches of [Multiplayer PvP](https://github.com/tanakrit-d/BalatroMultiplayerPvP/tree/mobile) and [MultiplayerAPI](https://github.com/tanakrit-d/BalatroMultiplayerAPI/tree/mobile), with Steam-free login for custom Community servers and native iOS TLS support.
+Includes patched Multiplayer PvP and MultiplayerAPI from [BalatroMultiplayerMobile releases](https://github.com/tanakrit-d/BalatroMultiplayerMobile/releases), with Steam-free Community login and native iOS TLS support.
 
 Set the bundled server defaults in [`mod-configs/multiplayer/MultiplayerAPI/config.lua`](mod-configs/multiplayer/MultiplayerAPI/config.lua). Existing Steamodded saved settings on a device take precedence.
 

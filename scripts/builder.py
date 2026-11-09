@@ -14,6 +14,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 import ios_openssl
+import mobile_release
 from game_archive import decrypt
 from package_version import versions
 
@@ -118,36 +119,9 @@ def required_smods(manifests):
     return release("Steamodded/smods", tag)
 
 
-def branch_mod(repo, filename, branch="mobile"):
-    # Resolve once, then fetch both metadata and archive at that immutable SHA.
-    commit = get(API + repo + "/commits/" + urllib.parse.quote(branch, safe=""))["sha"]
-    manifest = mod_manifest(repo, commit, filename)
-    version = manifest.get("version")
-    if not isinstance(version, str) or not re.fullmatch(
-        r"v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version
-    ):
-        raise ValueError("Missing or invalid mod version in " + filename)
-    return {
-        "repo": repo,
-        "branch": branch,
-        "commit": commit,
-        "version": version,
-        "url": API + repo + "/zipball/" + commit,
-    }, manifest
-
-
 def resolve():
-    # Mobile patches live in our forks. Track commit changes independently of
-    # manifest versions so API-only fixes also invalidate the build state.
-    mp, mp_manifest = branch_mod(
-        "tanakrit-d/BalatroMultiplayerPvP", "MultiplayerPvP.json"
-    )
-    mp_api, api_manifest = branch_mod(
-        "tanakrit-d/BalatroMultiplayerAPI", "MultiplayerAPI.json"
-    )
-    mp_smods = required_smods(
-        {"MultiplayerPvP": mp_manifest, "MultiplayerAPI": api_manifest}
-    )
+    multiplayer, manifests = mobile_release.resolve(get, download, archive_files)
+    multiplayer["smods"] = required_smods(manifests)
     common = {
         "openssl": ios_openssl.lock_entry(),
         "lovely": release("ethangreen-dev/lovely-injector"),
@@ -173,11 +147,7 @@ def resolve():
         "common": common,
         "streams": {
             "multiplayer-legacy": LEGACY_MULTIPLAYER,
-            "multiplayer": {
-                "mod": mp,
-                "api": mp_api,
-                "smods": mp_smods,
-            },
+            "multiplayer": multiplayer,
             "pokermon": {
                 "mod": release("InertSteak/Pokermon"),
                 "smods": release("Steamodded/smods"),
@@ -308,12 +278,16 @@ def package(stream, lock, base, game, output):
     else:
         dependencies.append(("Pokermon", "mod"))
     for folder, dependency in dependencies:
-        for name, data in archive_files(
-            download(lock["streams"][stream][dependency]["url"]), True
-        ).items():
+        pinned = lock["streams"][stream][dependency]
+        contents = (
+            mobile_release.files(pinned, download, archive_files)
+            if stream == "multiplayer" and dependency in ("api", "mod")
+            else archive_files(download(pinned["url"]), True)
+        )
+        for name, data in contents.items():
             mods[folder + "/" + name] = data
     if stream == "multiplayer":
-        ios_openssl.patch_mods(mods)
+        ios_openssl.prepare_mods(mods)
     reserved = {"smods", "multiplayer", "multiplayerapi", "multiplayerpvp", "pokermon"}
     for group in ["common", stream]:
         root = ROOT / "static-mods" / group

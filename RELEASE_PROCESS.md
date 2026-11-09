@@ -1,16 +1,11 @@
 # Mobile releases
 
-API and PvP sync workflows merge the latest stable official GitHub release tag
-into each fork's `mobile` branch through a tested pull request. Test the paired
-mods on devices and merge using **Create a merge commit**. The original projects
-are read-only; all branches, PRs and package releases stay in `tanakrit-d` forks.
-
-The builder resolves the two mobile branches to exact commits. Stable PvP
-publication requires each official release to include the existing source
-baseline, have the same manifest version as its mobile branch, and already be
-merged into mobile. The existing baseline is upstream 1.0.3; the latest GitHub
-release tags are v1.0.1. Until they catch up, the builder skips new PvP packages.
-Existing PvP downloads remain available, and Pokermon builds independently.
+The builder consumes published stable releases from
+`tanakrit-d/BalatroMultiplayerMobile`. It pins the release manifest, patch commit,
+upstream commits and asset SHA-256 hashes, then verifies both mod ZIPs before
+packaging. Steamodded is selected from the bundled mod manifests. The API already
+contains the iOS loader; the builder supplies the native runtime and removes
+desktop libraries.
 
 Each actual build gets revision `<workflow run number>.<attempt>` and numeric
 iOS build `1000.<run number>.<attempt>`. The leading 1000 keeps new build numbers

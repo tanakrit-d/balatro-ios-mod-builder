@@ -34,22 +34,56 @@
   "streams": {
     "multiplayer": {
       "api": {
-        "branch": "mobile",
-        "commit": "adf71840c483146f13ec2f676cbe68e61d8a87c7",
-        "repo": "tanakrit-d/BalatroMultiplayerAPI",
-        "url": "https://api.github.com/repos/tanakrit-d/BalatroMultiplayerAPI/zipball/adf71840c483146f13ec2f676cbe68e61d8a87c7",
-        "version": "1.0.3"
+        "commit": "958607d55c93375f859f2993423950af42ec85d3",
+        "repo": "Balatro-Multiplayer/BalatroMultiplayerAPI",
+        "root": "MultiplayerAPI",
+        "sha256": "610f310fe94c34262996afaf644046c341f906fe47123c2257e54f4ceb8776ac",
+        "size": 8058878,
+        "tag": "v1.0.5",
+        "url": "https://github.com/tanakrit-d/BalatroMultiplayerMobile/releases/download/v1.0.5/MultiplayerAPI-v1.0.5-mobile.1.zip",
+        "version": "1.0.5"
       },
       "mod": {
-        "branch": "mobile",
-        "commit": "9469dcdf44c57e939a722ea1df3a61b350f6319d",
-        "repo": "tanakrit-d/BalatroMultiplayerPvP",
-        "url": "https://api.github.com/repos/tanakrit-d/BalatroMultiplayerPvP/zipball/9469dcdf44c57e939a722ea1df3a61b350f6319d",
-        "version": "1.0.3"
+        "commit": "a5aac88ed508848f061a3d3e552b6f8920fb0a33",
+        "repo": "Balatro-Multiplayer/BalatroMultiplayerPvP",
+        "root": "MultiplayerPvP",
+        "sha256": "c5202130627863a06094fb4fc28216dd66d50838cd014e9a4965c42677ffe9ec",
+        "size": 4106116,
+        "tag": "v1.0.5",
+        "url": "https://github.com/tanakrit-d/BalatroMultiplayerMobile/releases/download/v1.0.5/MultiplayerPvP-v1.0.5-mobile.1.zip",
+        "version": "1.0.5"
+      },
+      "release_status": {
+        "dependencies": {
+          "api": {
+            "commit": "958607d55c93375f859f2993423950af42ec85d3",
+            "ready": true,
+            "repo": "Balatro-Multiplayer/BalatroMultiplayerAPI",
+            "tag": "v1.0.5",
+            "version": "1.0.5"
+          },
+          "mod": {
+            "commit": "a5aac88ed508848f061a3d3e552b6f8920fb0a33",
+            "ready": true,
+            "repo": "Balatro-Multiplayer/BalatroMultiplayerPvP",
+            "tag": "v1.0.5",
+            "version": "1.0.5"
+          }
+        },
+        "ready": true
       },
       "smods": {
         "url": "https://api.github.com/repos/Steamodded/smods/zipball/1.0.0-beta-1814a",
         "version": "1.0.0-beta-1814a"
+      },
+      "source_release": {
+        "commit": "1ca5ed1dc7af08c02e76b25f0464ff65ad1c5635",
+        "id": 439010758,
+        "manifest_sha256": "06b8cee293522573dd7b48a480ddd3eac38b3067be10d016c0eb1ba02322e103",
+        "manifest_url": "https://github.com/tanakrit-d/BalatroMultiplayerMobile/releases/download/v1.0.5/release-manifest.json",
+        "mobile_revision": 1,
+        "repo": "tanakrit-d/BalatroMultiplayerMobile",
+        "tag": "v1.0.5"
       }
     },
     "multiplayer-legacy": {

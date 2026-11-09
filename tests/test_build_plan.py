@@ -82,47 +82,16 @@ class BuildPlanTests(unittest.TestCase):
         waiting = self.plan(ready=False)
         self.assertIn("multiplayer", self.plan(waiting, ready=True)["build"]["streams"])
 
-    def test_official_release_behind_mobile_does_not_run_ancestry_checks(self):
-        def get(url):
-            if url.endswith("/releases/latest"):
-                return {"tag_name": "v1.0.1"}
-            if "/commits/" in url:
-                return {"sha": "e" * 40}
-            self.fail("Unexpected ancestry lookup: " + url)
-
-        with (
-            patch.object(build_plan.builder, "get", side_effect=get),
-            patch.object(
-                build_plan.builder, "mod_manifest", return_value={"version": "1.0.1"}
-            ),
-        ):
-            status = build_plan.release_status(self.lock)
-        self.assertFalse(status["ready"])
-
-    def test_matching_manifest_requires_both_ancestry_checks(self):
-        for comparison in ("ahead", "identical", "behind", "diverged"):
-            calls = []
-
-            def get(url, calls=calls, comparison=comparison):
-                calls.append(url)
-                if url.endswith("/releases/latest"):
-                    return {"tag_name": "v1.0.3"}
-                if "/commits/" in url:
-                    return {"sha": "e" * 40}
-                return {"status": comparison}
-
-            with (
-                self.subTest(comparison=comparison),
-                patch.object(build_plan.builder, "get", side_effect=get),
-                patch.object(
-                    build_plan.builder,
-                    "mod_manifest",
-                    return_value={"version": "1.0.3"},
-                ),
-            ):
-                status = build_plan.release_status(self.lock)
-                self.assertEqual(status["ready"], comparison in ("ahead", "identical"))
-                self.assertEqual(len([url for url in calls if "/compare/" in url]), 4)
+    def test_release_gate_checks_pinned_patched_release(self):
+        with patch.object(
+            build_plan.mobile_release, "verify", return_value={"ready": True}
+        ) as verify:
+            self.assertTrue(build_plan.release_status(self.lock)["ready"])
+            verify.assert_called_once_with(
+                self.lock["streams"]["multiplayer"],
+                build_plan.builder.get,
+                build_plan.builder.download,
+            )
 
     def test_invalid_revision_is_rejected(self):
         for number in ("0", "-1", "bad"):

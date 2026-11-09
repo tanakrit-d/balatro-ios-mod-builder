@@ -69,91 +69,35 @@ class BuilderTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             builder.archive_files(buf.getvalue())
 
-    def test_resolution_tracks_mobile_commits_and_manifest_pinned_smods(self):
-        commits = {
-            "tanakrit-d/BalatroMultiplayerPvP": "a" * 40,
-            "tanakrit-d/BalatroMultiplayerAPI": "b" * 40,
+    def test_resolution_uses_patched_pair_and_pinned_smods(self):
+        pair = {
+            "api": {"version": "1.0.5"},
+            "mod": {"version": "1.0.5"},
+            "source_release": {"tag": "v1.0.5"},
         }
-
-        def get(url):
-            self.assertTrue(url.startswith(builder.API))
-            if url.endswith("/commits/mobile"):
-                repo = url.removeprefix(builder.API).removesuffix("/commits/mobile")
-                return {"sha": commits[repo]}
-            if "/commits?" in url:
-                return [{"sha": "commit"}]
-            if "/contents/" in url:
-                repo, query = url.removeprefix(builder.API).split("/contents/")
-                self.assertTrue(query.endswith("?ref=" + commits[repo]))
-                return {
-                    "encoding": "base64",
-                    "content": base64.b64encode(
-                        json.dumps(
-                            {
-                                "version": "1.0.3",
-                                "dependencies": ["Steamodded (>=1.0.0~BETA-1814a)"],
-                            }
-                        ).encode()
-                    ).decode(),
-                }
-            if "/releases/tags/" in url:
-                self.assertTrue(url.endswith("/releases/tags/1.0.0-beta-1814a"))
-                return {
-                    "tag_name": "1.0.0-beta-1814a",
-                    "zipball_url": "https://example.com/pinned-smods",
-                }
-            self.assertTrue(url.endswith("/releases/latest"))
-            repo = url.removeprefix(builder.API).removesuffix("/releases/latest")
-            self.assertNotIn(
-                repo, commits, "mobile mods must not resolve fork releases"
-            )
-            version = "26.1002.0" if repo == "Steamodded/smods" else "v-test"
-            return {
-                "tag_name": version,
-                "zipball_url": builder.API + repo + "/zipball/" + version,
-            }
-
-        with patch.object(builder, "get", side_effect=get):
+        manifests = {
+            name: {"dependencies": ["Steamodded (>=1.0.0~BETA-1814a)"]}
+            for name in ("MultiplayerAPI", "MultiplayerPvP")
+        }
+        with (
+            patch.object(
+                builder.mobile_release, "resolve", return_value=(pair, manifests)
+            ) as resolve,
+            patch.object(builder, "get", return_value=[{"sha": "a" * 40}]),
+            patch.object(
+                builder,
+                "release",
+                side_effect=lambda repo, tag=None: {"version": tag or "latest"},
+            ),
+        ):
             lock = builder.resolve()
-            mp = lock["streams"]["multiplayer"]
-            for key, repo in [
-                ("mod", "tanakrit-d/BalatroMultiplayerPvP"),
-                ("api", "tanakrit-d/BalatroMultiplayerAPI"),
-            ]:
-                self.assertEqual(mp[key]["version"], "1.0.3")
-                self.assertEqual(mp[key]["branch"], "mobile")
-                self.assertEqual(mp[key]["commit"], commits[repo])
-                self.assertEqual(
-                    mp[key]["url"], builder.API + repo + "/zipball/" + commits[repo]
-                )
-            self.assertEqual(mp["smods"]["version"], "1.0.0-beta-1814a")
-            self.assertEqual(
-                lock["streams"]["pokermon"]["smods"]["version"], "26.1002.0"
-            )
-            self.assertNotIn("latest", json.dumps(lock))
-            self.assertEqual(
-                lock["common"]["openssl"], builder.ios_openssl.lock_entry()
-            )
-            commits["tanakrit-d/BalatroMultiplayerAPI"] = "c" * 40
-            updated = builder.resolve()
-            self.assertNotEqual(lock, updated)
-            self.assertEqual(mp["mod"], updated["streams"]["multiplayer"]["mod"])
-            self.assertEqual(
-                mp["api"]["version"],
-                updated["streams"]["multiplayer"]["api"]["version"],
-            )
-
-    def test_branch_mod_requires_a_packagable_manifest_version(self):
-        for version in (None, "", "mobile", "1.0.3/unsafe"):
-            with (
-                self.subTest(version=version),
-                patch.object(builder, "get", return_value={"sha": "a" * 40}),
-                patch.object(
-                    builder, "mod_manifest", return_value={"version": version}
-                ),
-                self.assertRaisesRegex(ValueError, "mod version"),
-            ):
-                builder.branch_mod("owner/repo", "mod.json")
+        resolve.assert_called_once()
+        self.assertEqual(
+            lock["streams"]["multiplayer"]["smods"]["version"], "1.0.0-beta-1814a"
+        )
+        self.assertEqual(
+            lock["streams"]["multiplayer"]["source_release"]["tag"], "v1.0.5"
+        )
 
     def test_smods_pin_uses_stricter_minimum_from_both_mods(self):
         for pvp, api, expected in [
@@ -209,13 +153,13 @@ class BuilderTests(unittest.TestCase):
             ):
                 builder.mod_manifest("owner/repo", "v1.0.1", "mod.json")
 
-    def test_missing_mobile_branch_does_not_fall_back_to_upstream(self):
+    def test_missing_mobile_release_does_not_fall_back_to_branches(self):
         with (
             patch.object(
-                builder, "get", side_effect=ValueError("mobile branch missing")
+                builder, "get", side_effect=ValueError("mobile release missing")
             ),
             patch.object(builder, "release") as release,
-            self.assertRaisesRegex(ValueError, "mobile branch missing"),
+            self.assertRaisesRegex(ValueError, "mobile release missing"),
         ):
             builder.resolve()
         release.assert_not_called()
@@ -299,10 +243,14 @@ class BuilderTests(unittest.TestCase):
                 {
                     "repo/mod.lua": b"mod",
                     "repo/config.lua": b"return {}",
-                    "repo/networking/openssl_ffi.lua": b"local function load_openssl()\n\tif openssl_loaded then\n\t\treturn true\n\tend\nend\n",
+                    "repo/networking/openssl_ffi.lua": b"-- BMP_IOS_OPENSSL\nssl_lib, crypto_lib = ffi.C, ffi.C\n",
                     "repo/networking/libssl.3.dylib": b"macOS dylib",
                 }
             )
+            for key in ("api", "mod"):
+                lock["streams"]["multiplayer"][key].update(
+                    sha256=hashlib.sha256(mod).hexdigest(), size=len(mod), root="repo"
+                )
             game = builder.zip_bytes(
                 {
                     "Balatro/game.love": builder.zip_bytes(
@@ -351,9 +299,7 @@ class BuilderTests(unittest.TestCase):
                         stream == "multiplayer-legacy",
                     )
                     if stream == "multiplayer-legacy":
-                        self.assertEqual(
-                            info["CFBundleDisplayName"], "Balatro (PvP-L)"
-                        )
+                        self.assertEqual(info["CFBundleDisplayName"], "Balatro (PvP-L)")
                         self.assertEqual(info["CFBundleName"], "Balatro (PvP-L)")
                     self.assertIn(app + "bundled-mods/Extra/mod.lua", files)
                     if stream == "multiplayer":
@@ -451,8 +397,8 @@ class BuilderTests(unittest.TestCase):
             self.assertEqual(mods["MultiplayerAPI/config.lua"], b"original")
 
     def test_changed_openssl_loader_aborts_packaging(self):
-        with self.assertRaisesRegex(ValueError, "loader changed"):
-            builder.ios_openssl.patch_mods(
+        with self.assertRaisesRegex(ValueError, "missing the iOS OpenSSL loader"):
+            builder.ios_openssl.prepare_mods(
                 {
                     "MultiplayerAPI/networking/openssl_ffi.lua": b"changed upstream loader"
                 }

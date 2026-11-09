@@ -64,7 +64,7 @@ def prepare(lock_path, dist, output, target, streams=("multiplayer", "pokermon")
             .get("release_status", {})
             .get("ready", False)
         ):
-            raise ValueError("Stable PvP publication is waiting for official releases")
+            raise ValueError("Stable PvP publication requires a verified patched source release")
         version = release_version(lock, stream)
         if "/" in version or "\\" in version:
             raise ValueError("Invalid release version")
@@ -110,7 +110,7 @@ def prepare(lock_path, dist, output, target, streams=("multiplayer", "pokermon")
             )
             + (
                 "\nBalatro (PvP). Includes MultiplayerPvP, "
-                "MultiplayerAPI, Steamodded, Lovely and statically linked iOS OpenSSL. Uses the forks’ mobile branches "
+                "MultiplayerAPI, Steamodded, Lovely and statically linked iOS OpenSSL. Uses verified BalatroMultiplayerMobile release assets "
                 "with Steam-free login for custom Community servers; configure "
                 "mod-configs/multiplayer/MultiplayerAPI/config.lua before building "
                 "to bundle your server defaults.\n"
@@ -131,7 +131,7 @@ def prepare(lock_path, dist, output, target, streams=("multiplayer", "pokermon")
                         + dependency["repo"]
                         + ": mod `"
                         + dependency["version"]
-                        + "`, mobile commit `"
+                        + "`, upstream commit `"
                         + dependency["commit"]
                         + "`, official release `"
                         + official["tag"]

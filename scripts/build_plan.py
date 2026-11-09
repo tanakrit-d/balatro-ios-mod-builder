@@ -1,4 +1,4 @@
-"""Gate stable PvP builds on official releases and assign mobile build revisions."""
+"""Verify patched PvP source releases and assign mobile build revisions."""
 
 import argparse
 import copy
@@ -6,62 +6,15 @@ import json
 import os
 import re
 from pathlib import Path
-from urllib.parse import quote
 
 import builder
-
-# Preserve the already-published 1.0.3 baseline without resetting fork history.
-MOBILE_BASELINES = {
-    "api": (
-        "BalatroMultiplayerAPI",
-        "MultiplayerAPI.json",
-        "c514424cd450cfbb9c165d2b2c6e16e6d2bc8f7c",
-    ),
-    "mod": (
-        "BalatroMultiplayerPvP",
-        "MultiplayerPvP.json",
-        "44fb52f545fb25399ee8d12d3154edb99d91eb68",
-    ),
-}
+import mobile_release
 
 
 def release_status(lock):
-    checks = {}
-    for key, (name, filename, baseline) in MOBILE_BASELINES.items():
-        upstream = "Balatro-Multiplayer/" + name
-        mobile = lock["streams"]["multiplayer"][key]
-        release = builder.get(builder.API + upstream + "/releases/latest")
-        if release.get("draft") or release.get("prerelease"):
-            raise ValueError("Expected a published stable upstream release")
-        tag = release["tag_name"]
-        sha = builder.get(builder.API + upstream + "/commits/" + quote(tag, safe=""))[
-            "sha"
-        ]
-        manifest = builder.mod_manifest(upstream, sha, filename)
-        version = manifest["version"].removeprefix("v")
-        ready = version == mobile["version"].removeprefix("v")
-        if ready:
-            # The official release must include our existing source baseline,
-            # and its commit must already have been merged into mobile.
-            for repo, base, head in (
-                (upstream, baseline, sha),
-                (mobile["repo"], sha, mobile["commit"]),
-            ):
-                comparison = builder.get(
-                    builder.API + repo + "/compare/" + base + "..." + head
-                )
-                ready = ready and comparison["status"] in ("ahead", "identical")
-        checks[key] = {
-            "repo": upstream,
-            "tag": tag,
-            "commit": sha,
-            "version": version,
-            "ready": ready,
-        }
-    return {
-        "ready": all(item["ready"] for item in checks.values()),
-        "dependencies": checks,
-    }
+    return mobile_release.verify(
+        lock["streams"]["multiplayer"], builder.get, builder.download
+    )
 
 
 def inputs(lock):
@@ -126,7 +79,7 @@ def main():
         summary.write("Mobile build: `" + result["build"]["version"] + "`\n\n")
         if not status["ready"]:
             summary.write(
-                "PvP publication is waiting for official release tags to include the existing mobile baseline and be merged into mobile. Existing releases are unchanged.\n\n"
+                "PvP publication requires a verified patched source release.\n\n"
             )
         summary.write(
             "Selected streams: " + ", ".join(result["build"]["streams"]) + "\n"
