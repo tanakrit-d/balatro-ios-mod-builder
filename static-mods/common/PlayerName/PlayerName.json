@@ -7,6 +7,6 @@
   "prefix": "playername",
   "main_file": "main.lua",
   "priority": 100010,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "dependencies": ["Steamodded (>=1.0.0~BETA-1224a)"]
 }

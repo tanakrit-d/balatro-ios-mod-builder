@@ -25,17 +25,24 @@ function names.pvp()
     return integration('MultiplayerPvP', PVP)
 end
 
+function names.legacy()
+    return integration('Multiplayer', MP)
+end
+
 function names.api()
     return integration('MultiplayerAPI', MPAPI)
 end
 
 function names.in_lobby()
-    local api, pvp = names.api(), names.pvp()
+    local api, pvp, legacy = names.api(), names.pvp(), names.legacy()
     if api and type(api.get_current_lobby) == 'function' then
         local ok, lobby = pcall(api.get_current_lobby)
         if not ok or lobby then return true end
     end
-    return pvp and pvp.LOBBY and not not (pvp.LOBBY.code and pvp.LOBBY.code ~= '') or false
+    for _, mod in pairs({ pvp = pvp, legacy = legacy }) do
+        if mod.LOBBY and mod.LOBBY.code and mod.LOBBY.code ~= '' then return true end
+    end
+    return false
 end
 
 function names.can_edit()
@@ -65,6 +72,18 @@ local function sync_pvp(value)
     -- Modern PvP gets peer names from API lobby data. Its local name is still
     -- used by the config UI and as a fallback; do not send legacy network messages.
     if pvp.LOBBY then pvp.LOBBY.username = value end
+    return true
+end
+
+local function sync_legacy(value)
+    local legacy = names.legacy()
+    if not legacy then return true end
+    if not legacy.LOBBY or not legacy.ACTIONS
+        or type(legacy.ACTIONS.set_username) ~= 'function' then return false end
+    if not persist(legacy, 'username', value) then return false end
+    -- Legacy owns its username protocol, including the blind-colour suffix.
+    -- Its action updates local state offline and sends the name when connected.
+    if legacy.LOBBY.username ~= value then legacy.ACTIONS.set_username(value) end
     return true
 end
 
@@ -128,8 +147,10 @@ function names.sync()
     local value, err = names.validate(profile.name or ('P' .. tostring(index)))
     if not value then names.status = err; return end
     local pvp_ok, pvp_saved = pcall(sync_pvp, value)
+    local legacy_ok, legacy_saved = pcall(sync_legacy, value)
     local api_ok, api_saved, note = pcall(sync_api, value)
-    if not pvp_ok or not pvp_saved or not api_ok or not api_saved then
+    if not pvp_ok or not pvp_saved or not legacy_ok or not legacy_saved
+        or not api_ok or not api_saved then
         names.status = 'Profile saved; multiplayer sync will retry.'
     else
         names.status = note or 'Names follow the active profile.'

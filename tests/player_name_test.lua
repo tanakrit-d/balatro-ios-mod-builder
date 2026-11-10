@@ -104,6 +104,43 @@ equal(names.validate('\255'), nil)
 equal(names.validate('  Alice\n '), 'Alice')
 
 -- Load the actual UI entry point with LÖVE events and minimal UI doubles.
+-- Legacy can load late, updates offline state, and sends only changed names.
+integrations(false, false)
+local legacy_sends = 0
+MP = { id = 'Multiplayer', can_load = true, config = { username = 'Guest' },
+    LOBBY = { username = 'Guest', connected = false }, ACTIONS = {} }
+MP.ACTIONS.set_username = function(value)
+    MP.LOBBY.username = value
+    if MP.LOBBY.connected then legacy_sends = legacy_sends + 1 end
+end
+names.sync(); equal(MP.LOBBY.username, 'Guest')
+SMODS.Mods.Multiplayer = MP
+names.sync(); equal(MP.config.username, 'Alice'); equal(MP.LOBBY.username, 'Alice')
+equal(legacy_sends, 0)
+MP.LOBBY.connected = true; G.SETTINGS.profile = 2
+names.sync(); equal(MP.LOBBY.username, 'Bob'); equal(legacy_sends, 1)
+names.sync(); equal(legacy_sends, 1)
+MP.LOBBY.code = 'ABCDEF'; G.SETTINGS.profile = 1
+assert(not names.can_edit()); names.sync(); equal(MP.LOBBY.username, 'Bob')
+MP.LOBBY.code = ''
+MP.save_mod_config = function() return false end
+names.sync(); equal(MP.config.username, 'Bob'); equal(MP.LOBBY.username, 'Bob')
+MP.save_mod_config = nil
+local set_username = MP.ACTIONS.set_username
+MP.ACTIONS.set_username = function() error('network unavailable') end
+names.sync(); equal(MP.config.username, 'Alice'); equal(MP.LOBBY.username, 'Bob')
+MP.ACTIONS.set_username = set_username
+names.sync(); equal(MP.LOBBY.username, 'Alice'); equal(legacy_sends, 2)
+for _, flag in ipairs({'disabled', 'can_load'}) do
+    MP[flag] = flag == 'disabled'
+    G.SETTINGS.profile = 2; names.sync(); equal(MP.LOBBY.username, 'Alice')
+    MP[flag] = flag ~= 'disabled'
+end
+G.SETTINGS.profile = 1
+local legacy = MP
+MP = nil; names.sync()
+SMODS.Mods.Multiplayer = nil
+
 integrations(false, false)
 local native, repeat_keys, forwarded, profile_saves = false, false, 0, 0
 local display, message
@@ -123,6 +160,11 @@ local plain_inputs = 0
 function create_text_input(args) plain_inputs = plain_inputs + 1; return args end
 G.FUNCS.overlay_menu = function(args) G.OVERLAY_MENU = args end
 G.FUNCS.exit_overlay_menu = function() G.OVERLAY_MENU = nil end
+local mod_exits = 0
+G.FUNCS.exit_mods = function()
+    mod_exits = mod_exits + 1
+    G.ACTIVE_MOD_UI, SMODS.IN_MODS_TAB = nil, nil
+end
 G.FUNCS.profile_select = function() end
 love = {
     graphics = { getDimensions = function() return 1200, 600 end },
@@ -197,3 +239,25 @@ equal(pvp_input.button, 'player_name_pvp')
 open('Bob'); lobby = {}; G.FUNCS.player_name_save(); equal(profile_saves, 1)
 love.update(1); assert(not native and not repeat_keys); lobby = nil
 print('Player Name profile, integration and native-input checks passed')
+
+-- Saving cleans up the mod menu; cancel preserves its return context.
+integrations(false, false); G.SETTINGS.profile = 1
+MP = legacy; SMODS.Mods.Multiplayer = MP
+local legacy_input = create_text_input({ref_table = MP.LOBBY, ref_value = 'username'})
+equal(legacy_input.button, 'player_name_legacy')
+local legacy_returns = 0
+G.FUNCS.openModUI_Multiplayer = function() legacy_returns = legacy_returns + 1 end
+G.ACTIVE_MOD_UI = MP; SMODS.IN_MODS_TAB = true
+G.FUNCS.player_name_legacy(); G.FUNCS.player_name_cancel()
+equal(legacy_returns, 1); equal(G.ACTIVE_MOD_UI, MP); equal(mod_exits, 0)
+G.ACTIVE_MOD_UI = mod
+open('Charlie'); G.FUNCS.player_name_save()
+equal(G.PROFILES[1].name, 'Charlie'); equal(MP.LOBBY.username, 'Charlie')
+equal(G.ACTIVE_MOD_UI, nil); equal(SMODS.IN_MODS_TAB, nil); equal(mod_exits, 1)
+equal(G.PROFILES[2].name, 'Bob')
+open('Dana'); G.FUNCS.player_name_save(); equal(mod_exits, 1)
+open('Dana'); love.textinput('X'); MP.LOBBY.code = 'ABCDEF'
+G.FUNCS.player_name_save(); equal(G.PROFILES[1].name, 'Dana')
+love.update(1); assert(not native); equal(MP.LOBBY.username, 'Dana')
+MP.LOBBY.code = nil
+print('Legacy synchronization, lobby guard, routing and mod-menu cleanup checks passed')

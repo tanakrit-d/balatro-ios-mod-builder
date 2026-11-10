@@ -10,7 +10,13 @@ on:
         default: current
         options:
           - current
+          - multiplayer
+          - pokermon
           - multiplayer-legacy
+      replace_ipa:
+        description: Replace the selected stream's existing IPA using its pinned dependencies (select one stream)
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: ['scripts/**', 'native/**', 'static-mods/**', 'mod-configs/**', 'assets/**', 'pyproject.toml', 'uv.lock', 'versions.lock.json', '.github/workflows/**']
@@ -33,19 +39,15 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
       - run: uv sync --frozen --no-install-project --no-dev
       - run: uv run --no-sync python -m unittest discover -s tests -v
-      - uses: actions/cache/restore@v6
-        with:
-          path: .build/last-success.json
-          key: stream-state-${{ github.run_id }}
-          restore-keys: stream-state-
       - id: resolve
+        if: github.event_name != 'push'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           BUILD_STREAM: ${{ inputs.stream || 'current' }}
+          REPLACE_IPA: ${{ inputs.replace_ipa || false }}
         run: |
-          uv run --no-sync python scripts/builder.py resolve
           uv run --no-sync python scripts/build_plan.py
-      - name: Rebuild Mobile Maker runtime with latest Lovely
+      - name: Rebuild Mobile Maker runtime with pinned dependencies
         if: steps.resolve.outputs.build == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -86,15 +88,14 @@ jobs:
           BUILD_STREAM: ${{ inputs.stream || 'current' }}
         run: |
           for stream in $(python3 -c 'import json; print(" ".join(json.load(open("versions.lock.json"))["build"]["streams"]))'); do
-            python3 scripts/releases.py --stream "$stream" --repo tanakrit-d/balatro-ios-mod-builder
+            extra=()
+            if [[ "${{ inputs.replace_ipa || false }}" == "true" ]]; then extra+=(--replace-existing); fi
+            python3 scripts/releases.py --stream "$stream" --repo tanakrit-d/balatro-ios-mod-builder "${extra[@]}"
           done
-      - name: Record successful publication
-        if: inputs.stream != 'multiplayer-legacy'
-        run: |
-          mkdir -p .build
-          cp versions.lock.json .build/last-success.json
-      - uses: actions/cache/save@v6
-        if: inputs.stream != 'multiplayer-legacy'
+      - uses: actions/upload-artifact@v7
+        if: always() && inputs.replace_ipa
         with:
-          path: .build/last-success.json
-          key: stream-state-${{ github.run_id }}
+          name: replaced-ipa-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .build/release-backups/
+          if-no-files-found: error
+          retention-days: 90

@@ -69,6 +69,9 @@ do
             return
         end
         stop_input()
+        -- Finish the mod-menu lifecycle before closing its overlay. Otherwise
+        -- Steamodded filters subsequent deck selection to this mod's empty pool.
+        if G.ACTIVE_MOD_UI or SMODS.IN_MODS_TAB then G.FUNCS.exit_mods() end
         G.FUNCS.exit_overlay_menu()
         -- Do not reopen the profile selector here: it rereads profile.jkr and
         -- could replace the name before Balatro's queued save has been written.
@@ -134,6 +137,7 @@ do
     G.FUNCS.player_name_open = function() open_editor('openModUI_' .. mod.id) end
     G.FUNCS.player_name_profile = function() open_editor('profile_select') end
     G.FUNCS.player_name_pvp = function() open_editor('openModUI_MultiplayerPvP') end
+    G.FUNCS.player_name_legacy = function() open_editor('openModUI_Multiplayer') end
 
     -- Standard SMODS entry point; no dependency on either multiplayer mod.
     mod.config_tab = function()
@@ -171,6 +175,12 @@ do
             and args.ref_value == 'username' then
             return UIBox_button({ label = { tostring(profile.name or 'Rename profile') },
                 button = 'player_name_pvp', minw = 4, scale = 0.4 })
+        end
+        local legacy = names.legacy()
+        if profile and legacy and legacy.LOBBY and args and args.ref_table == legacy.LOBBY
+            and args.ref_value == 'username' then
+            return UIBox_button({ label = { tostring(profile.name or 'Rename profile') },
+                button = 'player_name_legacy', minw = 4, scale = 0.4 })
         end
         return create_input(args)
     end

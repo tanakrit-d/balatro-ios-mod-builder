@@ -103,7 +103,7 @@ class ReleaseTests(unittest.TestCase):
             root = Path(temp)
             asset, lock = root / "game.ipa", root / "versions.lock.json"
             asset.write_bytes(b"package")
-            lock.write_bytes(b"lock")
+            lock.write_bytes(b"{}")
             plan = {
                 "tag": "multiplayer-1.0.3-1000.32.1",
                 "name": "package",

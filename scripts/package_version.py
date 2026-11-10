@@ -12,5 +12,10 @@ def versions(lock, stream):
 
 
 def release_version(lock, stream):
+    explicit = lock.get("build", {}).get("release_versions", {}).get(stream)
+    if explicit is not None:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", explicit):
+            raise ValueError("Invalid source release version")
+        return explicit
     version, build = versions(lock, stream)
     return version + "-" + build if "build" in lock else version
